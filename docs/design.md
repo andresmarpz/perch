@@ -59,7 +59,7 @@ src/entry/
   extensionLink.ts       Port to the service worker; tells the content script the extension went away
   background.ts          Service worker: open options on install, accept the content script's port
   options.ts             Options page entry
-test/e2e/                Playwright suites (fixture suite always; live suite with LIVE=1)
+test/e2e/                One Playwright smoke test against live twitch.tv
 spike/                   Feasibility spike scripts (reference only)
 ```
 
@@ -153,8 +153,8 @@ calls start to throw and `chrome.runtime.id` becomes `undefined`.
 events), and that must not end a session. So on disconnect the script checks `chrome.runtime.id`. Gone: dispose the
 runtime, which closes the session and puts the video back. Still defined (a suspended worker): reconnect with backoff
 (1, 2, 4 s, up to 30 s; the counter resets after a port that lived 5 s), which wakes the worker and never loops tightly.
-A `connect` that throws also counts as gone. The e2e suite covers both cases (a real
-`chrome.runtime.reload()` and a CDP `ServiceWorker.stopAllWorkers`) and that an idle tab leaves a suspended worker asleep.
+A `connect` that throws also counts as gone. (A real
+`chrome.runtime.reload()` and a suspended worker are the two cases.)
 The page's own `pagehide` disposes the runtime too, but
 only when `event.persisted` is false, so a page that goes into the back/forward cache keeps working when it returns.
 Settings changes made in the PiP toolbar go through a queue; each write is uninterruptible and the rest of the queue is
@@ -251,20 +251,8 @@ cannot be tested headless. Ship it behind the setting, mark it experimental in t
 
 - `bun run typecheck` and `bun test` (unit) must be clean. `bun run build` produces `dist/` loadable in Chrome.
 - Unit tests cover all of `src/domain`, using real IRC lines from `docs/spike.md`.
-- `bun run e2e` (fixture suite, about 30 s): Playwright headless Chromium (`channel: "chromium"`) with `dist/` loaded
-  (built in a global setup). A local HTTPS server (`test/e2e/support/mockIrc.ts`, a throwaway self-signed certificate
-  made with `openssl`) stands in for `www.twitch.tv` (fixture page mirroring the selectors in `TwitchPage.ts`, a hidden
-  duplicate control group, the chat embed page, the test videos with range support), `static-cdn.jtvnw.net` (emote
-  image) and `irc-ws.chat.twitch.tv` (a WebSocket IRC mock that answers the handshake and PING and can send PRIVMSG,
-  CLEARCHAT and CLEARMSG, or drop the socket). Chromium is pointed at it with `--host-resolver-rules` (every other host
-  is `~NOTFOUND`, so the suite is offline), `--ignore-certificate-errors`, and `--disable-features=LocalNetworkAccess...`
-  (otherwise Chromium blocks twitch.tv pages from reaching a loopback address).
-  Playwright's own interception does not work here: `context.routeWebSocket` only patches the main-world `WebSocket`, so
-  the content script's isolated-world socket is not intercepted, and `context.route` leaves subresource requests from the
-  Document PiP window hanging. Test videos come from `scripts/fixtures.ts` (ffmpeg, VP9 webm, 16:9 and 4:3).
-- `LIVE=1 bun run e2e` / `bun run e2e:live`: real twitch.tv smoke suite. It picks a live channel from the directory at
-  runtime and skips with a message if none is found.
-- CI (`.github/workflows/ci.yml`, push to main): install, typecheck, unit tests, build, Playwright Chromium, fixture e2e.
-- Interaction audit: every toolbar control is clicked in e2e and its effect asserted (not just rendered).
+- `bun run e2e`: one headless Playwright smoke test with `dist/` loaded. It picks a live twitch.tv channel at runtime (skips
+  if none) and checks the PiP button, the PiP video playing, lite chat lines and the back button.
+- CI (`.github/workflows/ci.yml`, push to main): install, typecheck, unit tests, build.
 - Things only a headed Chrome can show (real window chrome, the gesture requirement, auto PiP) go in
   `docs/manual-test.md` as a short checklist.

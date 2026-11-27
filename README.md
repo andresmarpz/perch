@@ -43,12 +43,10 @@ bun run check       # typecheck, unit tests, build
 bun run typecheck
 bun test src        # unit tests
 bun run build       # writes dist/
-bun run e2e         # fixture end-to-end suite, headless Chromium, offline (about 30 s)
-bun run e2e:live    # smoke suite against real twitch.tv (needs network and a live channel)
-bun scripts/fixtures.ts   # regenerate the test videos with ffmpeg
+bun run e2e         # one headless smoke test against a live twitch.tv channel
 ```
 
-The e2e suite needs the Playwright Chromium: `bunx playwright install chromium`. It never opens a visible window. Design
+The smoke test needs network and the Playwright Chromium (`bunx playwright install chromium`). It skips if no channel is live and never opens a visible window. Design
 notes are in `docs/design.md`, the feasibility findings in `docs/spike.md`.
 
 ## Known limits
