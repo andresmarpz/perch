@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { cancelReplay, keepPlaying } from "./videoHandoff.ts"
+import { cancelReplay, keepPlaying, moveVideoIn } from "./videoHandoff.ts"
 
 class FakeVideo extends EventTarget {
+  parentElement = null
+  nextSibling = null
+  removed = false
   paused = true
   plays = 0
   stubborn = false
@@ -12,6 +15,9 @@ class FakeVideo extends EventTarget {
       this.dispatchEvent(new Event("playing"))
     }
     return Promise.resolve()
+  }
+  remove() {
+    this.removed = true
   }
   userPause() {
     this.paused = true
@@ -68,5 +74,26 @@ describe("keepPlaying", () => {
     keepPlaying(asVideo(video), [20])
     await wait(80)
     expect(video.plays).toBe(1)
+  })
+})
+
+describe("moveVideoIn", () => {
+  test("ending the session drops the replays that have not run yet", async () => {
+    const globals = globalThis as unknown as { document?: unknown }
+    globals.document = { querySelector: () => null, querySelectorAll: () => [] }
+    try {
+      const video = new FakeVideo()
+      video.paused = false
+      video.stubborn = true
+      const stage = { append: () => undefined } as unknown as HTMLElement
+      const handoff = moveVideoIn(asVideo(video), stage)
+      video.paused = true
+      handoff.restore()
+      await wait(80)
+      expect(video.plays).toBe(0)
+      expect(video.removed).toBe(true)
+    } finally {
+      delete globals.document
+    }
   })
 })
