@@ -25,8 +25,6 @@ export class TwitchPage extends Context.Service<TwitchPage, {
   readonly findVideo: Effect.Effect<Option.Option<HTMLVideoElement>>
   readonly videoUnsafe: () => HTMLVideoElement | null
   watchForeignVideo(onForeign: () => void): Effect.Effect<void, never, Scope.Scope>
-  readonly findPlayerBar: Effect.Effect<Option.Option<HTMLElement>>
-  readonly currentRoute: Effect.Effect<Route>
   readonly routeChanges: Stream.Stream<Route>
   injectButton(onClick: () => void, hotkey: string): Effect.Effect<ButtonHandle, never, Scope.Scope>
 }>()("twitch-pip/services/TwitchPage") {
@@ -99,8 +97,6 @@ const makePage = (win: Window) => {
     return pickVisible(groups.length > 0 ? groups : Array.from(doc.querySelectorAll<HTMLElement>(selectors.rightControls)))
   }
 
-  const findPlayerBar = Effect.sync(queryPlayerBar)
-
   const currentRoute = Effect.sync(() => parseRoute(win.location.href))
 
   const navigation = "navigation" in win ? win.navigation : undefined
@@ -131,6 +127,7 @@ const makePage = (win: Window) => {
       Effect.sync(() => {
         const { wrapper, setHotkey } = createButton(doc, onClick, hotkey)
         const place = () => {
+          if (wrapper.isConnected && isVisible(wrapper)) return
           const bar = Option.getOrUndefined(queryPlayerBar())
           if (bar === undefined) {
             wrapper.remove()
@@ -142,16 +139,33 @@ const makePage = (win: Window) => {
           bar.insertBefore(wrapper, anchor)
         }
         let timer: ReturnType<typeof setTimeout> | undefined
+        let watched: Element | undefined
         const observer = new MutationObserver(() => {
           if (timer !== undefined) return
           timer = setTimeout(() => {
             timer = undefined
             place()
+            watch()
           }, replaceDelayMs)
         })
-        observer.observe(doc.documentElement, { childList: true, subtree: true })
+        const watch = () => {
+          const root = doc.querySelector(selectors.player)?.parentElement ?? doc.documentElement
+          if (root === watched && root.isConnected) return
+          observer.disconnect()
+          watched = root
+          observer.observe(root, { childList: true, subtree: true })
+        }
+        watch()
         place()
-        return { wrapper, observer, setHotkey, cancel: () => clearTimeout(timer) }
+        return {
+          wrapper,
+          observer,
+          setHotkey,
+          cancel: () => {
+            clearTimeout(timer)
+            timer = undefined
+          },
+        }
       }),
       ({ wrapper, observer, cancel }) =>
         Effect.sync(() => {
@@ -161,7 +175,7 @@ const makePage = (win: Window) => {
         }),
     ).pipe(Effect.map(({ setHotkey }): ButtonHandle => ({ setHotkey })))
 
-  return TwitchPage.of({ findVideo, videoUnsafe, watchForeignVideo, findPlayerBar, currentRoute, routeChanges, injectButton })
+  return TwitchPage.of({ findVideo, videoUnsafe, watchForeignVideo, routeChanges, injectButton })
 }
 
 const directChild = (parent: HTMLElement, descendant: Element): Element | null => {

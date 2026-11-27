@@ -1,6 +1,23 @@
 import { test as base, expect, type Locator, type Page } from "@playwright/test"
 import { startFixtureEnv, type FixtureEnv } from "./env.ts"
 
+declare global {
+  interface Window {
+    __twitch: {
+      replacePlayer(): void
+      replaceWithEmptyPlayer(): void
+      mountVideo(delay?: number): void
+      addPlayer(): void
+      rerenderPlayer(): void
+    }
+    __pauseOnMove?: boolean
+    __uiRemoved?: boolean
+    __maxVideos?: number
+    __resized?: Promise<void>
+    documentPictureInPicture: EventTarget & { window: Window }
+  }
+}
+
 export interface Size {
   readonly width: number
   readonly height: number

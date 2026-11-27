@@ -29,6 +29,3 @@ export const chatSourceFor = (layout: Layout, preferred: ChatSource): ChatSource
       return preferred
   }
 }
-
-export const sizeFor = (layout: Layout, settings: { readonly windowSizes: WindowSizes }): WindowSize =>
-  settings.windowSizes[layout]

@@ -17,6 +17,33 @@ test.describe("opening the PiP window", () => {
     expect(order).toEqual({ visibleBar: true, beforeFullscreen: true })
   })
 
+  test("the button leaves for good when the route stops being a channel", async ({ app }) => {
+    const page = await app.openChannel()
+    await page.evaluate(() => history.pushState({}, "", "/directory"))
+    await expect(tid(page, "pip-open")).toHaveCount(0)
+    await page.waitForTimeout(700)
+    await expect(tid(page, "pip-open")).toHaveCount(0)
+  })
+
+  test("the button comes back when Twitch re-renders the player", async ({ app }) => {
+    const page = await app.openChannel()
+    await page.evaluate(() => window.__twitch.rerenderPlayer())
+    await expect(tid(page, "pip-open")).toHaveCount(1)
+    await expect.poll(() => page.evaluate(() => document.querySelector('[data-testid="pip-open"]')!.closest(".video-player") !== null)).toBe(true)
+    const stillThere = await page.evaluate(() => document.querySelector('[data-testid="pip-open"]')!.getClientRects().length > 0)
+    expect(stillThere).toBe(true)
+  })
+
+  test("the button appears when the player shows up after the page loaded", async ({ app }) => {
+    const page = await app.ctx.newPage()
+    await page.goto("https://www.twitch.tv/noplayer")
+    await page.waitForSelector('[data-a-target="stream-title"]')
+    await page.waitForTimeout(400)
+    await expect(tid(page, "pip-open")).toHaveCount(0)
+    await page.evaluate(() => window.__twitch.addPlayer())
+    await expect(tid(page, "pip-open")).toHaveCount(1)
+  })
+
   test("the PiP button has no button on routes that are not a channel", async ({ app }) => {
     const page = await app.ctx.newPage()
     await page.goto("https://www.twitch.tv/directory")

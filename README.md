@@ -19,11 +19,11 @@ opens the options page. Chrome 116 or newer is needed for Document Picture-in-Pi
 ## Usage
 
 - Open a live channel at `https://www.twitch.tv/<channel>`. Click the PiP button in the player bar (its tooltip shows
-  the hotkey) or press `Alt+Shift+P`. Press the hotkey again to close. The hotkey is ignored while you type in a text box.
+  the hotkey) or press `Alt+Shift+P`. Press the hotkey again to close, in the tab or in the PiP window. The hotkey is ignored while you type in a text box.
 - Layouts: video only, chat on the side, chat below, chat over the video (overlay). The toolbar at the top of the PiP
   window switches layout, controls playback and volume, and has a back-to-tab button. It shows on pointer movement or
   keyboard focus and hides after two seconds. In narrow windows the volume slider, layout buttons and chat text controls
-  fold into popovers that open on hover or focus.
+  fold into popovers that open on hover or focus, and in the narrowest the toolbar keeps play, layout, back and a "more" menu.
 - Chat sources: the official Twitch chat embed (you can type when you are logged in), or lite chat, a read-only chat
   list drawn by the extension (needed for overlay). Overlay always uses lite chat.
 - Options (`chrome://extensions`, Details, Extension options; it also opens on first install): default layout and chat source, chat text size, overlay opacity, the
@@ -52,9 +52,8 @@ notes are in `docs/design.md`, the feasibility findings in `docs/spike.md`.
   headed Chrome: see `docs/manual-test.md`.
 - Chrome may refuse to resize the PiP window when you change layout. The layout still changes.
 - Lite chat has no 7TV, BTTV or FFZ emotes, no badges, and cannot send messages. Use Twitch chat for that.
-- Live channels only. VODs, clips and offline channels get no button.
+- The button shows on every channel page, live or not. An offline channel opens the VOD preview Twitch shows there. VOD and clip pages get no button.
 - Twitch changes its page often. The selectors live in `src/services/TwitchPage.ts`; the live suite checks they still
   hold.
 - Automatic PiP needs Chrome's per-site "Automatic picture-in-picture" permission for twitch.tv and is experimental.
-- In a very narrow side layout (under about 500 px) the toolbar is wider than the video area and overlaps the chat panel.
 - Chrome only: no Firefox or Safari.

@@ -78,12 +78,6 @@ test.describe("session lifecycle", () => {
   })
 })
 
-declare global {
-  interface Window {
-    __resized?: Promise<void>
-  }
-}
-
 const countStorageWrites = async (app: Harness) => {
   await app.sw.evaluate(() => {
     const g = globalThis as unknown as { __writes: number; __counting?: boolean }
@@ -130,7 +124,11 @@ test.describe("window size", () => {
   test("switching layout and resizing again within a moment keeps both layouts' sizes", async ({ app }) => {
     const pip = await app.openPip(await app.openChannel(), defaultSizes.side)
     await pip.evaluate(() => {
-      window.__resized = new Promise<void>((resolve) => addEventListener("resize", () => resolve(), { once: true }))
+      window.__resized = new Promise<void>((resolve) =>
+        addEventListener("resize", () => {
+          if (innerWidth === 640) resolve()
+        })
+      )
     })
     await pip.setViewportSize({ width: 640, height: 330 })
     await pip.evaluate(() => window.__resized)

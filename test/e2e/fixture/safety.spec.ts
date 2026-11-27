@@ -1,16 +1,6 @@
 import type { Page } from "@playwright/test"
 import { click, closed, expect, test, tid, type Harness } from "../support/fixtures.ts"
 
-declare global {
-  interface Window {
-    __twitch: { replacePlayer(): void; replaceWithEmptyPlayer(): void; mountVideo(delay?: number): void }
-    __pauseOnMove?: boolean
-    __uiRemoved?: boolean
-    __maxVideos?: number
-    documentPictureInPicture: EventTarget & { window: Window }
-  }
-}
-
 const owners = (page: Page) =>
   page.evaluate(() => [...document.querySelectorAll("video")].map((v) => v.dataset["twitchOwn"] ?? "extension"))
 

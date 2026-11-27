@@ -10,6 +10,7 @@ opens the options page. Open a channel that is live now at `https://www.twitch.t
 - [ ] Click the PiP button in the player bar. The window opens at once, no error in the page console.
 - [ ] Press `Alt+Shift+P` (focus on the page, not in chat). The window opens. Press it again: it closes.
 - [ ] Focus the chat box, press `Alt+Shift+P`. Nothing happens.
+- [ ] With the PiP window focused, press `Alt+Shift+P`. It closes and the video is back in the tab.
 - [ ] Leave the tab idle for 30 s, then click the button. It still opens (activation is used in the click turn).
 
 ## Window and video
@@ -20,6 +21,8 @@ opens the options page. Open a channel that is live now at `https://www.twitch.t
 - [ ] Drag the window edge. Close and reopen: the same layout opens at the size you left it.
 - [ ] Change layout from the toolbar: the window resizes to that layout's saved size (Chrome may refuse; the layout still changes).
 - [ ] Open the PiP, click another channel in the side nav: the PiP closes and the tab shows the new channel's video.
+- [ ] Open the PiP, reload the extension in `chrome://extensions`: the PiP closes and the tab video keeps playing (reload the tab to get the button back).
+- [ ] Open the PiP at the narrowest width (about 320 px, side layout): the toolbar fits over the video and the more menu holds mute, volume and the chat controls.
 
 ## Toolbar and chat
 

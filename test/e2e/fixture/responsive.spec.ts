@@ -139,6 +139,7 @@ test.describe("toolbar controls collapse into popovers", () => {
   test("Escape closes a popover and returns focus to its button", async ({ app }) => {
     await app.setSettings({ layout: "below" })
     const pip = await app.openPip(await app.openChannel(), { width: 320, height: 520 })
+    await expect(tid(pip, "pip-layout-menu")).toBeVisible()
     await tid(pip, "pip-layout-menu").focus()
     await expect(tid(pip, "pip-layout-side")).toBeVisible()
     await pip.keyboard.press("Escape")
@@ -149,6 +150,7 @@ test.describe("toolbar controls collapse into popovers", () => {
   test("Enter on the layout button pins the menu and Tab reaches its items", async ({ app }) => {
     await app.setSettings({ layout: "below" })
     const pip = await app.openPip(await app.openChannel(), { width: 320, height: 520 })
+    await expect(tid(pip, "pip-layout-menu")).toBeVisible()
     await tid(pip, "pip-layout-menu").focus()
     await pip.keyboard.press("Tab")
     await expect(tid(pip, "pip-layout-video")).toBeFocused()

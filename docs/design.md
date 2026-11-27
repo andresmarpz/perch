@@ -37,20 +37,23 @@ src/domain/              Pure logic, no DOM, no chrome.*. Fully unit tested.
   settings.ts            Settings Schema, defaults, decode with fallback for missing/corrupt fields
   hotkey.ts              Parse "Alt+Shift+P", match a KeyboardEvent-like record, format for display, record a combo
   chatLog.ts             Pure lite-chat log: 150-line cap, ClearChat/ClearMsg, scroll-at-bottom test
-  layout.ts              Layout kinds, which chat source a layout allows, PiP size for a layout
+  layout.ts              Layout kinds, which chat source a layout allows, default PiP size per layout
 src/services/            Effect services (Context.Service + Layer). Thin wrappers over browser APIs.
-  SettingsStore.ts       get / set / changes Stream over chrome.storage.sync, decoded with settings.ts
+  SettingsStore.ts       get / set / update / changes Stream over chrome.storage.sync, decoded with settings.ts
   TwitchPage.ts          Find video, player bar, channel; inject the button; Stream of route changes
-  LiteChat.ts            Stream<ChatMessage> from anonymous IRC WebSocket, keepalive, reconnect with backoff
+  LiteChat.ts            Stream<ChatEvent> (messages, clears, connection status) from an anonymous IRC WebSocket,
+                         keepalive, reconnect with backoff
   PipSession.ts          Scoped PiP session: open window, move video in, render UI, restore on release
                          (also exports `requestPipWindow`, the sync call the click handler makes)
+  videoHandoff.ts        Move the <video> into the PiP stage and back; replay timers; drop ours if Twitch mounted its own
 src/ui/                  DOM rendering (no Effect inside render functions; callbacks in, elements out)
   h.ts                   Typed element helper
   pip/                   PiP document: root, toolbar, chat panel (embed iframe or lite list), styles
   options/               Options page
 src/entry/
   content.ts             Content script: build the runtime, wire button + hotkey to PipSession
-  background.ts          Service worker: open options on install, nothing else for now
+  extensionLink.ts       Port to the service worker; tells the content script the extension went away
+  background.ts          Service worker: open options on install, accept the content script's port
   options.ts             Options page entry
 test/e2e/                Playwright suites (fixture suite always; live suite with LIVE=1)
 spike/                   Feasibility spike scripts (reference only)
@@ -60,13 +63,16 @@ spike/                   Feasibility spike scripts (reference only)
 
 ### Opening
 
-The content script runs on `https://www.twitch.tv/*` and `https://twitch.tv/*`. When the route is a live channel page
-and the player is present, it injects a PiP button into the visible right control group
+The content script runs on `https://www.twitch.tv/*` and `https://twitch.tv/*`. On every channel route (`/<channel>`, the
+route test in `domain/channel.ts`) it injects a PiP button into the visible right control group
 (`.player-controls__right-control-group`, before the fullscreen button; there are two copies of the control groups, use
-the visible one). The button and the hotkey `keydown` both carry user activation, which
-`documentPictureInPicture.requestWindow` needs. Opening while a session is open closes it (toggle). The button is injected on every channel route (the route test in
-`domain/channel.ts`), not gated on the live check from the spike: an offline channel has no usable video in a preview player
-and the session fails with `PlayerNotFound` only when no `<video>` exists.
+the visible one). The button is not gated on the channel being live: an offline channel page has a player with a VOD
+preview, and that is the video the session moves. The session fails with `PlayerNotFound` only when the page has no
+`<video>`. VOD and clip pages are not channel routes and get no button. The button and the hotkey `keydown` both carry user
+activation, which `documentPictureInPicture.requestWindow` needs. The entry point looks for the player video before it
+asks for a window, so a channel page without a player never flashes an empty window. Opening while a session is open
+closes it (toggle). The button observer watches the player's parent (the whole document only until a player exists) and
+does nothing while the button is connected and visible.
 
 ### Gesture handling
 
@@ -84,16 +90,34 @@ One `Effect.scoped` program per session:
 2. Acquire: remember the video's parent and next sibling, move the `<video>` (`[data-a-target="video-ref"] video`) into
    the PiP document. Release: put it back. If the original parent is gone (SPA navigation), put it into the current
    `[data-a-target="video-ref"]`. If none exists, drop it.
-3. Render the PiP UI (see below), subscribe to settings changes, persist window size on `resize` (debounced 500 ms, inner
-   size, tagged with the layout active when the event fired). A layout change calls `resizeTo` with the saved size
-   (outer size = saved inner size + window chrome); a refusal is ignored.
+3. Render the PiP UI (see below), subscribe to settings changes, persist window size on `resize` (debounced 500 ms per
+   layout, inner size, tagged with the layout active when the event fired, written with `SettingsStore.update`). A layout
+   change calls `resizeTo` with the saved size (outer size = saved inner size + window chrome); a refusal is ignored.
    The video's playing state is kept: if it played before a move, `play()` is retried at 0, 120 and 500 ms after the move.
+   The retries stop when the video resumed and then paused (the user paused it) and when the session ends.
 4. The session ends (scope closes) on the first of: PiP `pagehide` (user closed the window), the toolbar's back-to-tab
-   button, the route leaving the channel the session started on, the content script being torn down. `pagehide` restores
-   the video synchronously in the event handler; the rest runs through the scope. If the page already holds another
-   `<video>` where the original lived (Twitch re-rendered), ours is dropped.
+   button, the hotkey pressed in the tab or in the PiP window, Twitch mounting a different `<video>` in the player, the
+   route leaving the channel the session started on, the content script being torn down. The `pagehide` listener is
+   attached, and `pip.closed` checked, in the same synchronous step as the window arriving, before any other await.
+   `pagehide` restores the video synchronously in the event handler; the rest of the teardown runs through the scope on a
+   later tick, so the window is not closed from inside its own `pagehide`.
 
-The session must never leave the tab without its video. Every exit path goes through the scope's release.
+The session must never leave the tab without its video and never leave it with two. Every exit path goes through the
+scope's release. While the session runs, a `MutationObserver` on the player's parent ends it as soon as Twitch mounts its
+own `<video>` there. At restore the video goes back to its old place; if the player already holds another `<video>`, ours
+is dropped instead. After a restore the player is watched for 3 s (and one animation frame): if Twitch mounts its own
+video in that window, ours is removed. The invariant is exactly one `<video>` in the tab's player after any session end.
+
+### Content script teardown
+
+The content script holds a `chrome.runtime.connect` port to the service worker. A reload, update or removal of the
+extension orphans the content script: its `chrome.*` calls start to throw and `chrome.runtime.id` becomes `undefined`.
+`port.onDisconnect` alone is the wrong signal: Chrome also fires it when it suspends an idle service worker (30 s without
+events), and that must not end a session. So on disconnect the script checks `chrome.runtime.id`. Gone: dispose the
+runtime, which closes the session and puts the video back. Still defined (a suspended worker): reconnect after 1 s, which
+wakes the worker again. A `connect` that throws also counts as gone. The e2e suite covers both cases (a real
+`chrome.runtime.reload()` and a CDP `ServiceWorker.stopAllWorkers`). The page's own `pagehide` disposes the runtime too, but
+only when `event.persisted` is false, so a page that goes into the back/forward cache keeps working when it returns.
 
 ### PiP UI
 
@@ -103,6 +127,7 @@ The session must never leave the tab without its video. Every exit path goes thr
 - **Chat sources:** `twitch` = the official embed iframe
   `https://www.twitch.tv/embed/<channel>/chat?parent=www.twitch.tv&darkpopout` (interactive when logged in);
   `lite` = our own read-only renderer fed by LiteChat (needed for overlay, lighter, styleable). Overlay always uses lite.
+  The lite panel shows "Connecting to chat…" until the join succeeds and "Reconnecting…" while the socket is down.
   The embed's `parent` is the opener's hostname. The root is a CSS grid, so the iframe has its own cell and cannot be
   squeezed to 0 px.
 - **Embed font size:** the Twitch embed cannot be restyled, so `chatFontSize / 13` scales the iframe with a CSS transform
@@ -110,9 +135,11 @@ The session must never leave the tab without its video. Every exit path goes thr
 - **Toolbar:** a floating bar centered over the video area only (it lives in a `.zone` layer that shares the stage's
   grid cell, so it is never centered over the chat panel; if the stage is narrower than the toolbar it anchors to the
   left edge and overlaps the chat). It always stays on one row. A `ResizeObserver` on the zone picks the first
-  of four collapse levels whose measured width fits: 0 everything inline; 1 the volume slider moves into a popover on
+  of five collapse levels whose measured width fits: 0 everything inline; 1 the volume slider moves into a popover on
   the mute button; 2 the four layout buttons become one layout button with a menu; 3 font -/+ and opacity move into a
-  "chat" popover. Back-to-tab, play/pause, mute and the chat-source button are always inline. A popover opens on hover or
+  "chat" popover; 4 only play, the layout menu, a "more" popover and back-to-tab remain, and the more popover holds mute,
+  volume, the chat-source button, font -/+ and opacity (the same nodes move). Changing a setting never closes a popover:
+  popovers close only when the level actually changes. A popover opens on hover or
   keyboard focus of its button, a click pins it, Escape or an outside click closes it, and it stays inside the window.
   The same DOM nodes are used inline and in popovers, so every `data-testid` exists once (inside a collapsed popover it
   is visible only while the popover is open). The toolbar appears on pointer movement over the stage and on keyboard
@@ -122,7 +149,7 @@ The session must never leave the tab without its video. Every exit path goes thr
   `aria-label` and a `data-testid`.
 - **Video sizing:** in every layout the video fills the stage with `object-fit: contain`. In `below` the stage's aspect
   ratio follows `videoWidth / videoHeight` (updated on `loadedmetadata` and `resize`, default 16:9), capped at 70% of the
-  window height, and the chat takes the rest. In `side` the chat column is `clamp(200px, 40%, 380px)`.
+  window height, and the chat takes the rest. In `side` the chat column is `clamp(160px, 38%, 340px)`.
 - **Player-bar button:** 32 px round button with a 20 px icon and Twitch's hover colour, so it matches its neighbours.
   Its `aria-label` and tooltip read "Picture-in-picture with chat (<hotkey>)" and follow hotkey changes live.
 - **Look:** dark, Twitch purple accent `#9146FF`, system font, 8 px radius, subtle blur behind the toolbar. Lite chat
@@ -136,7 +163,11 @@ The session must never leave the tab without its video. Every exit path goes thr
 `NICK justinfan<5 digits>`, `JOIN #<channel>`. A frame can hold several lines joined by `\r\n`. Answer server `PING`
 with `PONG`. Send our own `PING` every 60 s; if no `PONG` in 10 s, treat the socket as dead. Reconnect with exponential
 backoff (1 s, capped 30 s) for as long as the stream is consumed. Handle `CLEARCHAT` / `CLEARMSG` by removing lines.
-Interrupting the stream closes the socket.
+Interrupting the stream closes the socket. The backoff restarts at 1 s only after the join succeeded (the `001` welcome or
+the JOIN echo for our nick), not when the socket merely opens, so a server that accepts and closes right away is retried
+after 1, 2, 4 s and so on. Any failure, including a defect such as `new WebSocket` throwing, is logged with its cause and
+retried with the same backoff. The stream starts with a `connecting` status event, then `connected` after the join and
+`reconnecting` after each drop.
 
 ### Settings
 
@@ -151,7 +182,10 @@ windowSizes: { [layout]: { width, height } }            defaults: video 480x270,
 ```
 
 Decoding never fails the app: unknown or invalid fields fall back to defaults field by field. The options page edits
-the same store; open sessions follow changes live.
+the same store; open sessions follow changes live. `SettingsStore.update(f)` reads, applies `f` and writes under a
+one-permit semaphore, so concurrent writers in one context do not lose each other's fields (separate contexts, such as two
+tabs, still race at the storage layer: last write wins, and the read-modify-write window is a few milliseconds). `set` and
+`update` fail when the read fails and write nothing; `get` falls back to defaults for display only.
 
 ### Automatic PiP (stretch, opt-in)
 
@@ -164,8 +198,11 @@ cannot be tested headless. Ship it behind the setting, mark it experimental in t
 - Services: `Context.Service` classes with a `layer`. Pure logic stays in `src/domain` as plain functions.
 - Errors: `Schema.TaggedError<Self>()("Tag", fields)`, e.g. `PipUnsupported`,
   `PlayerNotFound`, `PipOpenFailed`. Expected failures are typed; defects are bugs.
-- The content script builds one `ManagedRuntime` from the app layer and disposes it on `pagehide`.
-- No `Effect.runPromise` scattered in UI code: UI callbacks call one `run` function provided by the entry point.
+- The content script builds one `ManagedRuntime` from the app layer and disposes it on a non-persisted `pagehide` or when
+  the extension goes away.
+- No `Effect.runPromise` scattered in UI code: UI callbacks only call plain callbacks. Each entry point has one `run`
+  backed by its `ManagedRuntime` that logs failures with `Effect.logError` and the cause. The PiP UI's settings changes go
+  into a queue that a scoped fiber of the session drains.
 - Comments: none by default. One short line only for a non-obvious why.
 
 ## Testing
