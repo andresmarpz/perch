@@ -24,6 +24,13 @@ opens the options page. Open a channel that is live now at `https://www.twitch.t
 - [ ] Open the PiP, reload the extension in `chrome://extensions`: the PiP closes and the tab video keeps playing (reload the tab to get the button back).
 - [ ] Open the PiP at the narrowest width (about 320 px, side layout): the toolbar fits over the video and the more menu holds mute, volume and the chat controls.
 
+## Quality in the background
+
+- [ ] Watch a stream whose Source is 1080p or more, with Twitch quality on Auto. Open the PiP (default options: PiP quality "Highest available").
+- [ ] Switch to another app (or tab) for 3 minutes. Come back: the stream was never paused and the quality stays at Source. Check by eye, or read `video.videoHeight` in the PiP window's devtools.
+- [ ] Close the PiP. In the tab, Twitch's quality menu shows Auto again (your previous choice) and the tab goes back to the real visible/hidden state.
+- [ ] In the options page choose "Let Twitch decide", repeat: Twitch picks the quality again (it may drop in the background).
+
 ## Toolbar and chat
 
 - [ ] Toolbar shows on mouse move, hides after 2 s, stays while the pointer is on it, shows on Tab focus.

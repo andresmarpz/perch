@@ -34,6 +34,8 @@ src/domain/              Pure logic, no DOM, no chrome.*. Fully unit tested.
   channel.ts             Parse a twitch.tv URL into a live-channel route or not
   irc.ts                 Parse IRC lines (tags, prefix, command, params); split multi-line frames
   chat.ts                ChatMessage model; PRIVMSG -> ChatMessage; emote ranges -> text/emote segments
+  quality.ts             Pick the highest Twitch quality (Source first, then height, frame rate, bitrate)
+  bridge.ts              The attribute the content script sets on <html> while a session boosts the page
   settings.ts            Settings Schema, defaults, decode with fallback for missing/corrupt fields
   hotkey.ts              Parse "Alt+Shift+P", match a KeyboardEvent-like record, format for display, record a combo
   chatLog.ts             Pure lite-chat log: 150-line cap, ClearChat/ClearMsg, scroll-at-bottom test
@@ -50,7 +52,9 @@ src/ui/                  DOM rendering (no Effect inside render functions; callb
   h.ts                   Typed element helper
   pip/                   PiP document: root, toolbar, chat panel (embed iframe or lite list), styles
   options/               Options page
+src/page/                Code that runs in the page's own (MAIN) world: visibility guard, Twitch player quality control
 src/entry/
+  mainWorld.ts           MAIN-world content script (document_start): reads the attribute, runs the page/ code
   content.ts             Content script: build the runtime, wire button + hotkey to PipSession
   extensionLink.ts       Port to the service worker; tells the content script the extension went away
   background.ts          Service worker: open options on install, accept the content script's port
@@ -111,6 +115,33 @@ is dropped (paused and removed) instead. After a restore the same player is watc
 Twitch mounts its own video in it, ours is removed. The invariant is exactly one `<video>` in the session's player after
 any session end. The one exception: if no `video-ref` exists at restore (Twitch navigated away), the video is dropped and
 the player has none.
+
+### PiP boost (quality and visibility)
+
+Measured on a live channel in headless Chromium (3 minutes, PiP 760x300, "Let Twitch decide"; headless cannot hide a
+tab, so a hidden tab is simulated by overriding the page's visibility getters and firing `visibilitychange`): with the
+tab hidden Twitch's auto quality went 720p60 to 360p30 at about 70 s and stayed there (two earlier runs: Twitch stopped
+the stream at about 40 s instead). With the tab visible it held 720p60 in three of four runs (one dropped to 480p at
+45 s). Auto never reached the 1080p60 the channel offered. With the boost: 1080p60 for the whole 3 minutes, visible or
+hidden. So the background-tab downgrade is the real cause; the player-size cap was not reproduced. while a session runs the extension does two things, both only when `pipQuality` is `max`:
+
+- **The tab looks visible.** The isolated content script sets `data-twitch-pip-active` on `<html>`. A MAIN-world script
+  (`mainWorld.js`, `run_at: document_start`, so its listeners come first) watches that attribute. While it is set,
+  `document.visibilityState`, `hidden` and the `webkit*` variants read `visible` / `false` through own properties on
+  `document`, and `visibilitychange` is stopped in the capture phase at `window` and `document`. When the attribute goes,
+  the own properties are deleted, so the real behaviour (or whatever sits on the prototype) is back, and if the tab is
+  really hidden at that moment one `visibilitychange` is dispatched so Twitch sees the true state. If the tab is really
+  hidden when the session starts, one `visibilitychange` is dispatched the other way so Twitch learns it is visible.
+- **Quality stays at the top.** The same script finds Twitch's player instance (from `.video-player__container`,
+  `[data-a-target="video-player"]` and similar, walk the `__reactFiber$*` chain up to `mediaPlayerInstance`; the isolated
+  world cannot see these expandos). It remembers `getQuality()` and `isAutoQualityMode()`, calls
+  `setAutoQualityMode(false)` and `setQuality(<highest>)` (Source, `chunked`, first), and checks again every 2 s because
+  Twitch can switch auto back on. At the end it restores the remembered quality and auto mode, and puts the
+  `video-quality` entry of `localStorage` back to what it was, so the saved preference is never changed. If the player
+  cannot be found or its API changed, it logs one warning and leaves quality alone.
+
+`pipQuality: "twitch"` sets no attribute, so none of this runs. Changing the setting during a session applies at once.
+If the extension is reloaded mid-session the content script's teardown still removes the attribute.
 
 ### Content script teardown
 
@@ -188,6 +219,7 @@ chatFontSize: 11..24                                    default 13
 overlayOpacity: 0.2..1                                  default 0.85
 hotkey: string                                          default "Alt+Shift+P"
 autoPip: boolean                                        default false (stretch, see below)
+pipQuality: "max" | "twitch"                            default "max" (see PiP boost)
 windowSizes: { [layout]: { width, height } }            defaults: video 480x270, side 760x300, below 420x560, overlay 480x270
 ```
 

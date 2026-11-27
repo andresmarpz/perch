@@ -19,7 +19,7 @@ let channel: string | undefined
 const videoState = (target: Page) =>
   target.evaluate(() => {
     const video = document.querySelector("video")
-    return video === null ? null : { t: video.currentTime, paused: video.paused, w: video.videoWidth }
+    return video === null ? null : { t: video.currentTime, paused: video.paused, w: video.videoWidth, h: video.videoHeight }
   })
 
 const isLiveAndPlaying = async (candidate: Page): Promise<boolean> => {
@@ -113,6 +113,54 @@ test("lite chat receives live messages", async () => {
   await expect.poll(() => tid(pip, "chat-line").count(), { timeout: 30_000 }).toBeGreaterThan(2)
 })
 
+const topRendition = () =>
+  page.evaluate(() => {
+    const root = document.querySelector(".video-player__container") ?? document.querySelector('[data-a-target="video-player"]')
+    if (root === null) return null
+    const key = Object.keys(root).find((name) => name.startsWith("__reactFiber$"))
+    let fiber = key === undefined ? null : (root as unknown as Record<string, any>)[key]
+    for (let depth = 0; fiber && depth < 400; depth++, fiber = fiber.return) {
+      const instance = fiber.memoizedProps?.mediaPlayerInstance ?? fiber.stateNode?.props?.mediaPlayerInstance
+      if (instance && typeof instance.getQualities === "function") {
+        const heights = instance.getQualities().map((quality: { height?: number }) => quality.height ?? 0)
+        return { top: Math.max(...heights), auto: instance.isAutoQualityMode() as boolean }
+      }
+    }
+    return null
+  })
+
+const simulateHidden = (hidden: boolean) =>
+  page.evaluate((hide) => {
+    const state = hide ? "hidden" : "visible"
+    for (const key of ["visibilityState", "webkitVisibilityState"]) {
+      Object.defineProperty(Document.prototype, key, { configurable: true, get: () => state })
+    }
+    for (const key of ["hidden", "webkitHidden"]) Object.defineProperty(Document.prototype, key, { configurable: true, get: () => hide })
+    document.dispatchEvent(new Event("visibilitychange", { bubbles: true }))
+  }, hidden)
+
+test("with the tab hidden for 75 s the PiP keeps playing at the top rendition", async () => {
+  test.setTimeout(180_000)
+  const before = await topRendition()
+  test.skip(before === null, "Twitch's player instance is not reachable; the quality bridge cannot be checked live")
+  const top = before!.top
+  await simulateHidden(true)
+  try {
+    await expect.poll(async () => (await videoState(pip))?.h ?? 0, { timeout: 45_000 }).toBe(top)
+    const start = (await videoState(pip))!.t
+    for (let elapsed = 0; elapsed < 75; elapsed += 5) {
+      await page.waitForTimeout(5000)
+      const sample = (await videoState(pip))!
+      expect(sample.h).toBe(top)
+      expect(sample.paused).toBe(false)
+      expect(sample.t).toBeGreaterThan(start)
+    }
+    expect((await topRendition())?.auto).toBe(false)
+  } finally {
+    await simulateHidden(false)
+  }
+})
+
 test("back to tab restores the video in the page", async () => {
   await pip.locator('[data-testid="pip-root"]').hover({ position: { x: 60, y: 60 } })
   const gone = new Promise<void>((resolve) => pip.on("close", () => resolve()))
@@ -122,4 +170,5 @@ test("back to tab restores the video in the page", async () => {
   const first = (await videoState(page))!
   await expect.poll(async () => (await videoState(page))?.t ?? 0, { timeout: 15_000 }).toBeGreaterThan(first.t + 1)
   expect(await page.evaluate(() => document.querySelectorAll("video").length)).toBe(1)
+  await expect.poll(async () => (await topRendition())?.auto, { timeout: 10_000 }).toBe(true)
 })

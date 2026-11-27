@@ -27,7 +27,12 @@ opens the options page. Chrome 116 or newer is needed for Document Picture-in-Pi
 - Chat sources: the official Twitch chat embed (you can type when you are logged in), or lite chat, a read-only chat
   list drawn by the extension (needed for overlay). Overlay always uses lite chat.
 - Options (`chrome://extensions`, Details, Extension options; it also opens on first install): default layout and chat source, chat text size, overlay opacity, the
-  shortcut, experimental automatic PiP, and a reset for sizes and settings. The window size is remembered per layout.
+  shortcut, PiP quality, experimental automatic PiP, and a reset for sizes and settings. The window size is remembered per layout.
+
+- Quality: by default ("Highest available") the PiP window keeps Twitch on Source quality with automatic quality off, and
+  makes the tab look visible to Twitch while the window is open, so Twitch does not lower the quality or stop the stream
+  when you switch tabs or apps. Both are undone when the window closes, and your saved Twitch quality is not touched.
+  "Let Twitch decide" in the options page turns this off.
 
 ![Overlay layout](docs/img/pip-overlay.png)
 
@@ -55,5 +60,7 @@ notes are in `docs/design.md`, the feasibility findings in `docs/spike.md`.
 - The button shows on every channel page, live or not. An offline channel opens the VOD preview Twitch shows there. VOD and clip pages get no button.
 - Twitch changes its page often. The selectors live in `src/services/TwitchPage.ts`; the live suite checks they still
   hold.
+- Quality control uses Twitch's player internals (the React fiber of the player element). If Twitch changes them the
+  extension logs one warning in the page console and leaves quality to Twitch; the live suite checks they still hold.
 - Automatic PiP needs Chrome's per-site "Automatic picture-in-picture" permission for twitch.tv and is experimental.
 - Chrome only: no Firefox or Safari.
