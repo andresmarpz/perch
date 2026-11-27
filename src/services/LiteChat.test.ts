@@ -88,7 +88,7 @@ describe("LiteChat", () => {
       socketAt(fake, 0).open()
       socketAt(fake, 0).receive(
         [
-          ":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!",
+          ":tmi.twitch.tv 366 justinfan1 #rubius :End of /NAMES list",
           privmsg("m1", "hello"),
           "@room-id=1;target-user-id=2 :tmi.twitch.tv CLEARCHAT #rubius :troll",
           "@target-msg-id=m1 :tmi.twitch.tv CLEARMSG #rubius :hello",
@@ -192,11 +192,39 @@ describe("LiteChat", () => {
       yield* settle
       socketAt(fake, 1).open()
       yield* settle
-      socketAt(fake, 1).receive(":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!")
+      socketAt(fake, 1).receive(":tmi.twitch.tv 366 justinfan1 #rubius :End of /NAMES list")
       yield* settle
       socketAt(fake, 1).drop()
       yield* settle
       yield* TestClock.adjust(1000)
+      yield* settle
+      expect(fake.sockets).toHaveLength(3)
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("the 001 welcome alone does not count as joined", async () => {
+    const fake = makeFake()
+    const events: Array<ChatEvent> = []
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start(events)
+      yield* settle
+      socketAt(fake, 0).open()
+      socketAt(fake, 0).receive(":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!")
+      yield* settle
+      expect(events).toEqual([{ _tag: "Status", status: "connecting" }])
+      socketAt(fake, 0).drop()
+      yield* settle
+      yield* TestClock.adjust(1000)
+      yield* settle
+      socketAt(fake, 1).open()
+      socketAt(fake, 1).receive(":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!")
+      socketAt(fake, 1).drop()
+      yield* settle
+      yield* TestClock.adjust(1999)
+      yield* settle
+      expect(fake.sockets).toHaveLength(2)
+      yield* TestClock.adjust(1)
       yield* settle
       expect(fake.sockets).toHaveLength(3)
       yield* Fiber.interrupt(fiber)
@@ -247,7 +275,7 @@ describe("LiteChat", () => {
       const fiber = yield* start(events)
       yield* settle
       socketAt(fake, 0).open()
-      socketAt(fake, 0).receive(":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!")
+      socketAt(fake, 0).receive(":tmi.twitch.tv 366 justinfan1 #rubius :End of /NAMES list")
       yield* settle
       socketAt(fake, 0).drop()
       yield* settle

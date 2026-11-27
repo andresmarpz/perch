@@ -62,7 +62,7 @@ const connection = (sockets: SocketFactory["Service"], channel: string, attempts
           case "PONG":
             Latch.openUnsafe(ponged)
             return
-          case "001":
+          case "366":
             markJoined()
             return
           case "JOIN":

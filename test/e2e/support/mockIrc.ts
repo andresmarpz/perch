@@ -117,14 +117,18 @@ export class MockIrc {
     this.connections += 1
     this.clients.add(socket)
     socket.on("close", () => this.clients.delete(socket))
+    let nick = "justinfan1"
     socket.on("message", (data) => {
       for (const line of data.toString().split("\r\n")) {
         if (line === "") continue
         this.received.push(line)
+        if (line.startsWith("NICK ")) nick = line.slice(5).trim()
         if (line.startsWith("CAP REQ")) socket.send(":tmi.twitch.tv CAP * ACK :twitch.tv/tags twitch.tv/commands")
         else if (line.startsWith("JOIN #")) {
           this.lastChannel = line.slice(6).trim()
-          socket.send(`:tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!\r\n:justinfan1!justinfan1@justinfan1.tmi.twitch.tv JOIN #${this.lastChannel}`)
+          socket.send(
+            `:tmi.twitch.tv 001 ${nick} :Welcome, GLHF!\r\n:${nick}!${nick}@${nick}.tmi.twitch.tv JOIN #${this.lastChannel}\r\n:${nick}.tmi.twitch.tv 366 ${nick} #${this.lastChannel} :End of /NAMES list`,
+          )
         } else if (line.startsWith("PING")) socket.send(`:tmi.twitch.tv PONG tmi.twitch.tv ${line.slice(5)}`)
       }
     })
