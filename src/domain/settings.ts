@@ -2,6 +2,9 @@ import { Option, Schema } from "effect"
 import { formatHotkey, parseHotkey } from "./hotkey.ts"
 import { chatSources, defaultWindowSizes, layouts, type Layout, type WindowSize } from "./layout.ts"
 
+export const pipQualities = ["max", "twitch"] as const
+export type PipQuality = (typeof pipQualities)[number]
+
 const WindowSizeSchema = Schema.Struct({ width: Schema.Finite, height: Schema.Finite })
 
 export const SettingsSchema = Schema.Struct({
@@ -11,6 +14,7 @@ export const SettingsSchema = Schema.Struct({
   overlayOpacity: Schema.Finite,
   hotkey: Schema.String,
   autoPip: Schema.Boolean,
+  pipQuality: Schema.Literals(pipQualities),
   windowSizes: Schema.Struct({
     video: WindowSizeSchema,
     side: WindowSizeSchema,
@@ -35,6 +39,7 @@ export const defaults: Settings = {
   overlayOpacity: 0.85,
   hotkey: "Alt+Shift+P",
   autoPip: false,
+  pipQuality: "max",
   windowSizes: defaultWindowSizes,
 }
 
@@ -85,6 +90,7 @@ export const decodeSettings = (input: unknown): Settings => {
     ),
     hotkey: decodeHotkey(raw["hotkey"]),
     autoPip: decodeField(SettingsSchema.fields.autoPip, raw["autoPip"], defaults.autoPip),
+    pipQuality: decodeField(SettingsSchema.fields.pipQuality, raw["pipQuality"], defaults.pipQuality),
     windowSizes: decodeWindowSizes(raw["windowSizes"]),
   }
 }

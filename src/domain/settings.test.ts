@@ -18,6 +18,7 @@ describe("decodeSettings", () => {
       overlayOpacity: 0.5,
       hotkey: "Ctrl+Alt+K",
       autoPip: true,
+      pipQuality: "twitch",
       windowSizes: {
         video: { width: 500, height: 300 },
         side: { width: 800, height: 320 },
@@ -34,6 +35,13 @@ describe("decodeSettings", () => {
     expect(result.chatSource).toBe("lite")
     expect(result.chatFontSize).toBe(defaults.chatFontSize)
     expect(result.autoPip).toBe(true)
+  })
+
+  test("pipQuality defaults to max and falls back when invalid", () => {
+    expect(defaults.pipQuality).toBe("max")
+    expect(decodeSettings({ pipQuality: "twitch" }).pipQuality).toBe("twitch")
+    expect(decodeSettings({ pipQuality: "ultra" }).pipQuality).toBe("max")
+    expect(decodeSettings({ pipQuality: 3 }).pipQuality).toBe("max")
   })
 
   test("numbers are clamped into range", () => {

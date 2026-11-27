@@ -1,6 +1,6 @@
 import { recordHotkey, formatHotkey } from "../../domain/hotkey.ts"
 import { chatSources, layouts, type ChatSource, type Layout } from "../../domain/layout.ts"
-import { limits, type Settings } from "../../domain/settings.ts"
+import { limits, pipQualities, type PipQuality, type Settings } from "../../domain/settings.ts"
 import { h, type Child } from "../h.ts"
 import { icon, type IconName } from "../icons.ts"
 import { optionsCss } from "./styles.ts"
@@ -21,6 +21,8 @@ const layoutLabels: Readonly<Record<Layout, string>> = {
   below: "Chat below",
   overlay: "Overlay",
 }
+
+const qualityLabels: Readonly<Record<PipQuality, string>> = { max: "Highest available", twitch: "Let Twitch decide" }
 
 const sourceLabels: Readonly<Record<ChatSource, string>> = { twitch: "Twitch chat", lite: "Lite chat" }
 const sourceIcons: Readonly<Record<ChatSource, IconName>> = { twitch: "chat-twitch", lite: "chat-lite" }
@@ -84,6 +86,12 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
 
   const layout = segmented("Layout", layouts, (v) => layoutLabels[v], (v) => `layout-${v}`, (v) => `opt-layout-${v}`, (value) => save(() => callbacks.patch({ layout: value })))
   const source = segmented("Chat source", chatSources, (v) => sourceLabels[v], (v) => sourceIcons[v], (v) => `opt-chat-${v}`, (value) => save(() => callbacks.patch({ chatSource: value })))
+
+  const quality = h("select", {
+    testid: "opt-pip-quality",
+    attrs: { "aria-label": "PiP quality" },
+    on: { change: () => save(() => callbacks.patch({ pipQuality: quality.value as PipQuality })) },
+  }, ...pipQualities.map((value) => h("option", { props: { value, textContent: qualityLabels[value] } })))
 
   const fontValue = h("span", { class: "value", testid: "opt-font-value" })
   const font = h("input", {
@@ -201,6 +209,11 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
     h(
       "section",
       { class: "card" },
+      row("PiP quality", "Highest available keeps Twitch on Source quality and keeps the tab looking visible while the window is open, then restores both. Let Twitch decide leaves the player alone.", quality),
+    ),
+    h(
+      "section",
+      { class: "card" },
       row("Chat font size", "Applies to lite chat and scales the Twitch chat.", h("div", { class: "control" }, font, fontValue)),
       row("Overlay opacity", "Background of the chat over the video.", h("div", { class: "control" }, opacity, opacityValue)),
     ),
@@ -241,6 +254,7 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
     opacity.value = String(settings.overlayOpacity)
     opacityValue.textContent = `${Math.round(settings.overlayOpacity * 100)}%`
     autoPip.checked = settings.autoPip
+    quality.value = settings.pipQuality
     if (!recording) showHotkey()
   }
   update(initial)
