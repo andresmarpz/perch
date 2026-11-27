@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { fromPrivmsg, parseBadges, readableColor, segments, toChatEvent } from "./chat.ts"
+import { fromPrivmsg, readableColor, segments, toChatEvent } from "./chat.ts"
 import { parseLine } from "./irc.ts"
 
 const lala =
@@ -14,35 +14,27 @@ const line = (raw: string) => {
 }
 
 describe("fromPrivmsg", () => {
-  test("real line with badges and color", () => {
+  test("real line with color", () => {
     expect(fromPrivmsg(line(lala))).toEqual({
       id: "a678c65d-88a1-47a2-bf0e-912b85a11ed8",
-      channel: "rubius",
       login: "lala_notz",
       displayName: "Lala_notz",
       color: "#FFA8E7",
-      text: "adios",
       segments: [{ kind: "text", text: "adios" }],
-      badges: [
-        { set: "subscriber", version: "12" },
-        { set: "campaign-39276140-822e14bb-3596-4a88-b934-d4dfa4bb8549-mw", version: "1" },
-      ],
       isAction: false,
-      timestamp: 1795746055686,
     })
   })
 
   test("second real line", () => {
     const message = fromPrivmsg(line(jrobert))
     expect(message?.displayName).toBe("jrobert03")
-    expect(message?.badges).toEqual([{ set: "miami-chain", version: "1" }])
-    expect(message?.text).toBe("BYE")
+    expect(message?.segments).toEqual([{ kind: "text", text: "BYE" }])
   })
 
   test("/me ACTION is unwrapped", () => {
     const message = fromPrivmsg(line(":a!a@a.tmi.twitch.tv PRIVMSG #c :\u0001ACTION waves hello\u0001"))
     expect(message?.isAction).toBe(true)
-    expect(message?.text).toBe("waves hello")
+    expect(message?.segments).toEqual([{ kind: "text", text: "waves hello" }])
   })
 
   test("invalid or missing color becomes undefined; empty display name falls back to login", () => {
@@ -112,12 +104,6 @@ describe("segments", () => {
       { kind: "emote", id: "1", name: "hel" },
       { kind: "text", text: "lo" },
     ])
-  })
-})
-
-describe("parseBadges", () => {
-  test("empty tag gives no badges", () => {
-    expect(parseBadges("")).toEqual([])
   })
 })
 

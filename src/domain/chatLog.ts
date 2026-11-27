@@ -17,6 +17,8 @@ export const applyChatEvent = (
       return event.login === undefined ? [] : log.filter((line) => line.login !== event.login)
     case "ClearMsg":
       return log.filter((line) => line.id !== event.messageId)
+    case "Status":
+      return log
   }
 }
 

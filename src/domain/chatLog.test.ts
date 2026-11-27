@@ -4,15 +4,11 @@ import { applyChatEvent, isNearBottom, removedIds } from "./chatLog.ts"
 
 const msg = (id: string, login = "alice"): ChatMessage => ({
   id,
-  channel: "c",
   login,
   displayName: login,
   color: undefined,
-  text: id,
   segments: [{ kind: "text", text: id }],
-  badges: [],
   isAction: false,
-  timestamp: 0,
 })
 
 const add = (log: ReadonlyArray<ChatMessage>, m: ChatMessage, max?: number) =>

@@ -26,7 +26,8 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 .chat[data-source="lite"] .lite { display: block; }
 
 .lite-list { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 10px 8px; font-size: calc(var(--chat-font) * 1px); line-height: 1.4; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.22) transparent; }
-.lite-list:empty::before { content: "Connecting to chat\\2026"; color: var(--muted); font-size: 12px; }
+.lite-status { position: absolute; z-index: 1; top: 6px; left: 10px; right: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+.lite-status[hidden] { display: none; }
 .line { flex: none; padding: 2px 0; overflow-wrap: anywhere; word-break: break-word; }
 .line .name { font-weight: 700; }
 .line .sep { color: var(--text); }
@@ -39,7 +40,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 .pip[data-layout="overlay"] .chat { position: absolute; left: 10px; bottom: 10px; width: min(54%, 380px); height: min(48%, 260px); background: transparent; border: 0; pointer-events: none; display: flex; }
 .pip[data-layout="overlay"] .chat .lite { background: rgba(14, 14, 16, var(--overlay-opacity)); border-radius: 10px; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%); mask-image: linear-gradient(to bottom, transparent 0, #000 22%); }
 .pip[data-layout="overlay"] .lite-list { overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.7); }
-.pip[data-layout="overlay"] .lite-list:empty::before { display: none; }
+.pip[data-layout="overlay"] .lite-status { display: none; }
 .pip[data-layout="overlay"] .pill { display: none; }
 
 .toolbar { --tx: -50%; position: absolute; z-index: 10; top: 8px; left: 50%; width: max-content; transform: translate(var(--tx), -4px); display: flex; flex-wrap: nowrap; align-items: center; gap: 3px; padding: 4px; border-radius: 10px; background: rgba(24, 24, 27, 0.82); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,0.5); opacity: 0; pointer-events: none; transition: opacity 150ms ease, transform 150ms ease; }

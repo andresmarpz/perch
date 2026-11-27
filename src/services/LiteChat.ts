@@ -1,6 +1,6 @@
 import { Cause, Context, Effect, Latch, Layer, Option, Queue, Random, Ref, Schema, Stream } from "effect"
 import { toChatEvent, type ChatEvent } from "../domain/chat.ts"
-import { parseLine, splitFrame } from "../domain/irc.ts"
+import { nickOf, parseLine, splitFrame } from "../domain/irc.ts"
 import { SocketFactory, type ChatSocket } from "./SocketFactory.ts"
 
 export const ircUrl = "wss://irc-ws.chat.twitch.tv:443"
@@ -41,9 +41,16 @@ const connection = (sockets: SocketFactory["Service"], channel: string, attempts
     Effect.fn(function*(queue) {
       const nick = `justinfan${yield* Random.nextIntBetween(10000, 99999)}`
       const opened = yield* Latch.make(false)
+      const joined = yield* Latch.make(false)
       const ponged = yield* Latch.make(false)
       const dead = (reason: string) => Queue.failCauseUnsafe(queue, Cause.fail(new SocketClosed({ reason })))
       const socketRef: { current: ChatSocket | undefined } = { current: undefined }
+
+      const markJoined = () => {
+        if (Latch.isOpen(joined)) return
+        Latch.openUnsafe(joined)
+        Queue.offerUnsafe(queue, { _tag: "Status", status: "connected" })
+      }
 
       const onLine = (raw: string) => {
         const line = parseLine(raw)
@@ -54,6 +61,12 @@ const connection = (sockets: SocketFactory["Service"], channel: string, attempts
             return
           case "PONG":
             Latch.openUnsafe(ponged)
+            return
+          case "001":
+            markJoined()
+            return
+          case "JOIN":
+            if (nickOf(line.prefix) === nick) markJoined()
             return
           case "RECONNECT":
             dead("server asked to reconnect")
@@ -81,7 +94,7 @@ const connection = (sockets: SocketFactory["Service"], channel: string, attempts
         const connected = yield* opened.await.pipe(Effect.timeoutOption(connectWithin))
         if (Option.isNone(connected)) return dead("connect timed out")
         handshake(nick, channel).forEach((line) => socket.send(line))
-        yield* Ref.set(attempts, 0)
+        yield* Effect.forkScoped(joined.await.pipe(Effect.andThen(Ref.set(attempts, 0))))
         while (true) {
           yield* Effect.sleep(pingEvery)
           yield* Latch.close(ponged)
@@ -99,13 +112,21 @@ const messages = (sockets: SocketFactory["Service"], channel: string): Stream.St
   Stream.unwrap(
     Effect.gen(function*() {
       const attempts = yield* Ref.make(0)
+      const reconnectingEvent: ChatEvent = { _tag: "Status", status: "reconnecting" }
+      const reconnecting = Stream.make(reconnectingEvent)
       const backoff = Stream.fromEffect(
         Ref.getAndUpdate(attempts, (n) => n + 1).pipe(Effect.flatMap((n) => Effect.sleep(backoffMillis(n)))),
       ).pipe(Stream.drain)
-      return connection(sockets, channel, attempts).pipe(
-        Stream.catch(() => Stream.empty),
+      const connectingEvent: ChatEvent = { _tag: "Status", status: "connecting" }
+      const connecting = Stream.make(connectingEvent)
+      const loop = connection(sockets, channel, attempts).pipe(
+        Stream.catchCause((cause) =>
+          Stream.fromEffect(Effect.logWarning("twitch-pip: lite chat connection lost", Cause.pretty(cause))).pipe(Stream.drain)
+        ),
+        Stream.concat(reconnecting),
         Stream.concat(backoff),
         Stream.forever,
       )
+      return Stream.concat(connecting, loop)
     }),
   )

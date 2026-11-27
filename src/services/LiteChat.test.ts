@@ -23,10 +23,13 @@ class FakeSocket {
   }
 }
 
-const makeFake = () => {
+const makeFake = (options: { readonly throwFirst?: number } = {}) => {
   const sockets: Array<FakeSocket> = []
+  let attempts = 0
   const layer = Layer.succeed(SocketFactory, {
     open: (_url, handlers) => {
+      attempts += 1
+      if (attempts <= (options.throwFirst ?? 0)) throw new Error("WebSocket constructor failed")
       const socket = new FakeSocket(handlers)
       sockets.push(socket)
       return {
@@ -37,7 +40,7 @@ const makeFake = () => {
       }
     },
   })
-  return { sockets, layer: LiteChat.layer.pipe(Layer.provide(layer)) }
+  return { sockets, attempts: () => attempts, layer: LiteChat.layer.pipe(Layer.provide(layer)) }
 }
 
 const settle = Effect.forEach(Array.from({ length: 30 }), () => Effect.yieldNow, { discard: true })
@@ -93,9 +96,10 @@ describe("LiteChat", () => {
         ].join("\r\n"),
       )
       yield* settle
-      expect(events.map((e) => e._tag)).toEqual(["Message", "ClearChat", "ClearMsg"])
-      const first = events[0]
-      expect(first?._tag === "Message" && first.message.text).toBe("hello")
+      expect(events.map((e) => e._tag)).toEqual(["Status", "Status", "Message", "ClearChat", "ClearMsg"])
+      expect(events[1]).toEqual({ _tag: "Status", status: "connected" })
+      const message = events[2]
+      expect(message?._tag === "Message" && message.message.segments).toEqual([{ kind: "text", text: "hello" }])
       yield* Fiber.interrupt(fiber)
     }))
   })
@@ -145,9 +149,145 @@ describe("LiteChat", () => {
       yield* settle
       socketAt(fake, 2).drop()
       yield* settle
+      yield* TestClock.adjust(3999)
+      yield* settle
+      expect(fake.sockets).toHaveLength(3)
+      yield* TestClock.adjust(1)
+      yield* settle
+      expect(fake.sockets).toHaveLength(4)
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("a server that accepts and closes right away is retried after 1, 2 and 4 seconds", async () => {
+    const fake = makeFake()
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start([])
+      yield* settle
+      for (const [index, wait] of [[0, 1000], [1, 2000], [2, 4000], [3, 8000]] as const) {
+        socketAt(fake, index).open()
+        yield* settle
+        socketAt(fake, index).drop()
+        yield* settle
+        yield* TestClock.adjust(wait - 1)
+        yield* settle
+        expect(fake.sockets).toHaveLength(index + 1)
+        yield* TestClock.adjust(1)
+        yield* settle
+        expect(fake.sockets).toHaveLength(index + 2)
+      }
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("the backoff starts over only after the join succeeded", async () => {
+    const fake = makeFake()
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start([])
+      yield* settle
+      socketAt(fake, 0).open()
+      socketAt(fake, 0).drop()
+      yield* settle
+      yield* TestClock.adjust(1000)
+      yield* settle
+      socketAt(fake, 1).open()
+      yield* settle
+      socketAt(fake, 1).receive(":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!")
+      yield* settle
+      socketAt(fake, 1).drop()
+      yield* settle
+      yield* TestClock.adjust(1000)
+      yield* settle
+      expect(fake.sockets).toHaveLength(3)
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("the JOIN echo for our own nick counts as joined, someone else's does not", async () => {
+    const fake = makeFake()
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start([])
+      yield* settle
+      socketAt(fake, 0).open()
+      socketAt(fake, 0).drop()
+      yield* settle
+      yield* TestClock.adjust(1000)
+      yield* settle
+      const nick = socketAt(fake, 1).sent.find((line) => line.startsWith("NICK "))?.slice(5) ?? ""
+      socketAt(fake, 1).open()
+      yield* settle
+      socketAt(fake, 1).receive(`:other!other@other.tmi.twitch.tv JOIN #rubius`)
+      socketAt(fake, 1).drop()
+      yield* settle
+      yield* TestClock.adjust(1999)
+      yield* settle
+      expect(fake.sockets).toHaveLength(2)
+      yield* TestClock.adjust(1)
+      yield* settle
+      expect(fake.sockets).toHaveLength(3)
+      socketAt(fake, 2).open()
+      yield* settle
+      const own = socketAt(fake, 2).sent.find((line) => line.startsWith("NICK "))?.slice(5) ?? ""
+      expect(own).not.toBe(nick)
+      socketAt(fake, 2).receive(`:${own}!${own}@${own}.tmi.twitch.tv JOIN #rubius`)
+      yield* settle
+      socketAt(fake, 2).drop()
+      yield* settle
       yield* TestClock.adjust(1000)
       yield* settle
       expect(fake.sockets).toHaveLength(4)
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("reports connected after the join and reconnecting after a drop", async () => {
+    const fake = makeFake()
+    const events: Array<ChatEvent> = []
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start(events)
+      yield* settle
+      socketAt(fake, 0).open()
+      socketAt(fake, 0).receive(":tmi.twitch.tv 001 justinfan1 :Welcome, GLHF!")
+      yield* settle
+      socketAt(fake, 0).drop()
+      yield* settle
+      expect(events).toEqual([
+        { _tag: "Status", status: "connecting" },
+        { _tag: "Status", status: "connected" },
+        { _tag: "Status", status: "reconnecting" },
+      ])
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("a WebSocket that throws on creation is retried with the same backoff and reported as reconnecting", async () => {
+    const fake = makeFake({ throwFirst: 2 })
+    const events: Array<ChatEvent> = []
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start(events)
+      yield* settle
+      expect(fake.attempts()).toBe(1)
+      expect(events).toEqual([
+        { _tag: "Status", status: "connecting" },
+        { _tag: "Status", status: "reconnecting" },
+      ])
+      yield* TestClock.adjust(999)
+      yield* settle
+      expect(fake.attempts()).toBe(1)
+      yield* TestClock.adjust(1)
+      yield* settle
+      expect(fake.attempts()).toBe(2)
+      yield* TestClock.adjust(1999)
+      yield* settle
+      expect(fake.attempts()).toBe(2)
+      yield* TestClock.adjust(1)
+      yield* settle
+      expect(fake.attempts()).toBe(3)
+      expect(fake.sockets).toHaveLength(1)
+      socketAt(fake, 0).open()
+      socketAt(fake, 0).receive(privmsg("m1", "still works"))
+      yield* settle
+      expect(events.filter((event) => event._tag === "Message")).toHaveLength(1)
       yield* Fiber.interrupt(fiber)
     }))
   })
@@ -172,7 +312,7 @@ describe("LiteChat", () => {
     const fake = makeFake()
     await run(fake, Effect.gen(function*() {
       const chat = yield* LiteChat
-      const fiber = yield* Effect.forkChild(Stream.runCollect(chat.messages("rubius").pipe(Stream.take(1))))
+      const fiber = yield* Effect.forkChild(Stream.runCollect(chat.messages("rubius").pipe(Stream.filter((event) => event._tag === "Message"), Stream.take(1))))
       yield* settle
       socketAt(fake, 0).open()
       socketAt(fake, 0).receive(privmsg("m1", "one"))
@@ -211,6 +351,30 @@ describe("LiteChat", () => {
       yield* settle
       yield* TestClock.adjust(60_000)
       yield* settle
+      yield* TestClock.adjust(10_000)
+      yield* settle
+      expect(socketAt(fake, 0).closed).toBe(true)
+      yield* TestClock.adjust(1000)
+      yield* settle
+      expect(fake.sockets).toHaveLength(2)
+      yield* Fiber.interrupt(fiber)
+    }))
+  })
+
+  test("a second ping cycle without a PONG reconnects even after the first was answered", async () => {
+    const fake = makeFake()
+    await run(fake, Effect.gen(function*() {
+      const fiber = yield* start([])
+      yield* settle
+      socketAt(fake, 0).open()
+      yield* settle
+      yield* TestClock.adjust(60_000)
+      yield* settle
+      socketAt(fake, 0).receive(":tmi.twitch.tv PONG tmi.twitch.tv :tmi.twitch.tv")
+      yield* settle
+      yield* TestClock.adjust(60_000)
+      yield* settle
+      expect(socketAt(fake, 0).sent.filter((line) => line.startsWith("PING")).length).toBe(2)
       yield* TestClock.adjust(10_000)
       yield* settle
       expect(socketAt(fake, 0).closed).toBe(true)

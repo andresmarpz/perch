@@ -4,26 +4,20 @@ export type Segment =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "emote"; readonly id: string; readonly name: string }
 
-export interface Badge {
-  readonly set: string
-  readonly version: string
-}
-
 export interface ChatMessage {
   readonly id: string
-  readonly channel: string
   readonly login: string
   readonly displayName: string
   readonly color: string | undefined
-  readonly text: string
   readonly segments: ReadonlyArray<Segment>
-  readonly badges: ReadonlyArray<Badge>
   readonly isAction: boolean
-  readonly timestamp: number
 }
+
+export type ChatStatus = "connecting" | "connected" | "reconnecting"
 
 export type ChatEvent =
   | { readonly _tag: "Message"; readonly message: ChatMessage }
+  | { readonly _tag: "Status"; readonly status: ChatStatus }
   | { readonly _tag: "ClearChat"; readonly channel: string; readonly login: string | undefined }
   | { readonly _tag: "ClearMsg"; readonly channel: string; readonly messageId: string }
 
@@ -65,12 +59,6 @@ export const segments = (text: string, emotesTag: string): ReadonlyArray<Segment
   return out
 }
 
-export const parseBadges = (tag: string): ReadonlyArray<Badge> =>
-  tag
-    .split(",")
-    .map((entry) => entry.split("/"))
-    .flatMap(([set, version]) => (set === undefined || set === "" ? [] : [{ set, version: version ?? "" }]))
-
 const hexColor = /^#[0-9a-fA-F]{6}$/
 const actionPattern = /^\u0001ACTION ?([\s\S]*?)\u0001?$/
 
@@ -91,15 +79,11 @@ export const fromPrivmsg = (line: IrcLine): ChatMessage | undefined => {
 
   return {
     id: line.tags["id"] || `${login}-${safeTimestamp}`,
-    channel,
     login,
     displayName: displayName === undefined || displayName === "" ? login : displayName,
     color: validColor(line.tags["color"]),
-    text,
     segments: segments(text, line.tags["emotes"] ?? ""),
-    badges: parseBadges(line.tags["badges"] ?? ""),
     isAction: action !== null,
-    timestamp: safeTimestamp,
   }
 }
 

@@ -1,4 +1,4 @@
-import type { ChatEvent, ChatMessage } from "../../domain/chat.ts"
+import type { ChatEvent, ChatMessage, ChatStatus } from "../../domain/chat.ts"
 import { readableColor } from "../../domain/chat.ts"
 import { applyChatEvent, isNearBottom, removedIds } from "../../domain/chatLog.ts"
 import { makeH } from "../h.ts"
@@ -6,8 +6,15 @@ import { makeH } from "../h.ts"
 const emoteUrl = (id: string, scale: "1.0" | "2.0") =>
   `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/${scale}`
 
+const statusText: Readonly<Record<ChatStatus, string>> = {
+  connecting: "Connecting to chat\u2026",
+  connected: "",
+  reconnecting: "Reconnecting\u2026",
+}
+
 export interface LiteChatView {
   readonly element: HTMLElement
+  readonly status: HTMLElement
   readonly pill: HTMLElement
   push(event: ChatEvent): void
   setSticky(forced: boolean): void
@@ -17,6 +24,12 @@ export interface LiteChatView {
 export const mountLiteChat = (doc: Document): LiteChatView => {
   const h = makeH(doc)
   const list = h("div", { class: "lite-list", testid: "lite-chat", attrs: { role: "log", "aria-live": "off", "aria-label": "Chat" } })
+  const status = h("div", {
+    class: "lite-status",
+    testid: "chat-status",
+    attrs: { role: "status" },
+    props: { textContent: statusText.connecting },
+  })
   const pill = h("button", {
     class: "pill",
     testid: "chat-new-pill",
@@ -72,6 +85,11 @@ export const mountLiteChat = (doc: Document): LiteChatView => {
   pill.addEventListener("click", onPill)
 
   const push = (event: ChatEvent) => {
+    if (event._tag === "Status") {
+      status.textContent = statusText[event.status]
+      status.hidden = event.status === "connected"
+      return
+    }
     const next = applyChatEvent(log, event)
     if (next === log) return
     for (const id of removedIds(log, next)) {
@@ -90,6 +108,7 @@ export const mountLiteChat = (doc: Document): LiteChatView => {
 
   return {
     element: list,
+    status,
     pill,
     push,
     setSticky: (value) => {

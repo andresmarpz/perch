@@ -29,6 +29,20 @@ test.describe("lite chat connection", () => {
   })
 })
 
+test.describe("lite chat status", () => {
+  test("hides the status once joined, shows Reconnecting while the socket is down, and hides it again", async ({ app }) => {
+    const { pip } = await openLite(app)
+    await expect(tid(pip, "chat-status")).toBeHidden()
+    app.irc.say({ text: "one line" })
+    await expect(lines(pip)).toHaveCount(1)
+    app.irc.dropAll()
+    await expect(tid(pip, "chat-status")).toHaveText("Reconnecting\u2026")
+    await expect(tid(pip, "chat-status")).toBeHidden({ timeout: 10_000 })
+    app.irc.say({ text: "back" })
+    await expect(lines(pip).last()).toContainText("back")
+  })
+})
+
 test.describe("lite chat rendering", () => {
   test("shows the display name and the message", async ({ app }) => {
     const { pip } = await openLite(app)

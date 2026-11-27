@@ -43,7 +43,7 @@ export const mountPipUi = (win: Window, options: PipUiOptions): PipUi => {
   const chat = h(
     "div",
     { class: "chat", testid: "pip-chat" },
-    h("div", { class: "lite" }, lite.element, lite.pill),
+    h("div", { class: "lite" }, lite.element, lite.status, lite.pill),
   )
   const zone = h("div", { class: "zone" })
   const root = h("div", { class: "pip", testid: "pip-root" }, stage, chat, zone)
