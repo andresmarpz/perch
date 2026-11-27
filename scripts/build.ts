@@ -18,7 +18,7 @@ const optionsHtml = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>Twitch PiP settings</title>
+<title>Perch settings</title>
 </head>
 <body>
 <div id="root"></div>

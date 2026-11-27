@@ -67,7 +67,7 @@ const row = (label: string, hint: Child, control: Node, badge?: string, stack = 
 
 export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: OptionsCallbacks): OptionsView => {
   document.head.append(h("style", { props: { textContent: optionsCss } }))
-  document.title = "Twitch PiP settings"
+  document.title = "Perch settings"
 
   const status = h("div", { class: "status", attrs: { role: "status", "aria-live": "polite" }, testid: "opt-status" })
   let statusTimer: ReturnType<typeof setTimeout> | undefined
@@ -197,7 +197,7 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
       "header",
       { class: "top" },
       h("div", { class: "logo" }, icon(document, "layout-overlay")),
-      h("div", {}, h("h1", { props: { textContent: "Twitch PiP" } }), h("p", { class: "sub", props: { textContent: "Settings save as you change them." } })),
+      h("div", {}, h("h1", { props: { textContent: "Perch" } }), h("p", { class: "sub", props: { textContent: "Settings save as you change them." } })),
       status,
     ),
     h(

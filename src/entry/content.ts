@@ -8,7 +8,9 @@ import { SettingsStore } from "../services/SettingsStore.ts"
 import { SocketFactory } from "../services/SocketFactory.ts"
 import { TwitchPage, type ButtonHandle } from "../services/TwitchPage.ts"
 import { isEditable } from "../ui/editable.ts"
-import { makeExtensionLink } from "./extensionLink.ts"
+import { extensionAlive, makeExtensionLink } from "./extensionLink.ts"
+
+const takeoverEvent = "twitch-pip:takeover"
 
 interface MediaSessionLike {
   setActionHandler(action: string, handler: (() => void) | null): void
@@ -22,6 +24,7 @@ const main = Effect.gen(function*() {
   let settings: Settings = yield* store.get
 
   const onKeydown = (event: KeyboardEvent) => {
+    if (!extensionAlive()) return void runtime.dispose()
     if (event.repeat || isEditable(event.target)) return
     const hotkey = parseHotkey(settings.hotkey)
     if (hotkey === undefined || !matches(hotkey, event)) return
@@ -32,6 +35,7 @@ const main = Effect.gen(function*() {
   }
 
   const toggle = () => {
+    if (!extensionAlive()) return void runtime.dispose()
     const state = session.stateUnsafe()
     if (state === "opening") return
     if (state === "open") return run(session.close)
@@ -49,6 +53,12 @@ const main = Effect.gen(function*() {
   yield* Effect.acquireRelease(
     Effect.sync(() => window.addEventListener("keydown", onKeydown, true)),
     () => Effect.sync(() => window.removeEventListener("keydown", onKeydown, true)),
+  )
+
+  const onTakeover = () => void runtime.dispose()
+  yield* Effect.acquireRelease(
+    Effect.sync(() => document.addEventListener(takeoverEvent, onTakeover)),
+    () => Effect.sync(() => document.removeEventListener(takeoverEvent, onTakeover)),
   )
 
   const link = makeExtensionLink(() => void runtime.dispose())
@@ -138,6 +148,7 @@ function run(effect: Effect.Effect<unknown, unknown, Layer.Success<typeof appLay
   )
 }
 
+document.dispatchEvent(new CustomEvent(takeoverEvent))
 void runtime.runPromise(Effect.void)
 window.addEventListener("pagehide", (event) => {
   if (!event.persisted) void runtime.dispose()

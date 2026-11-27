@@ -1,27 +1,45 @@
 {
   "manifest_version": 3,
-  "name": "Twitch PiP",
-  "version": "0.1.0",
+  "name": "Perch — picture-in-picture for Twitch",
+  "short_name": "Perch",
+  "version": "1.0.0",
   "description": "Pop the Twitch stream you are watching into an always-on-top Picture-in-Picture window with chat.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage"],
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.twitch.tv/*",
+    "https://twitch.tv/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.twitch.tv/*", "https://twitch.tv/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://www.twitch.tv/*",
+        "https://twitch.tv/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.twitch.tv/*", "https://twitch.tv/*"],
-      "js": ["mainWorld.js"],
+      "matches": [
+        "https://www.twitch.tv/*",
+        "https://twitch.tv/*"
+      ],
+      "js": [
+        "mainWorld.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }
@@ -31,7 +49,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Twitch PiP",
+    "default_title": "Perch",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

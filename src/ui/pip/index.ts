@@ -36,7 +36,7 @@ export const mountPipUi = (win: Window, options: PipUiOptions): PipUi => {
   const h = makeH(doc)
   const style = h("style", { props: { textContent: pipCss } })
   doc.head.append(style)
-  doc.title = `${options.channel} - Twitch PiP`
+  doc.title = `${options.channel} - Perch`
 
   const stage = h("div", { class: "stage", testid: "pip-stage" })
   const lite = mountLiteChat(doc)
