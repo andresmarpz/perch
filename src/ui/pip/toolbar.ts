@@ -167,8 +167,8 @@ export const mountToolbar = (
       if (!suppress) open()
     })
     listen(element, "focusout", (event) => {
-      const next = (event as FocusEvent).relatedTarget
-      if (!(next instanceof Node) || !element.contains(next)) close()
+      const next = (event as FocusEvent).relatedTarget as Node | null
+      if (next === null || !element.contains(next)) close()
     })
     listen(element, "keydown", (event) => {
       if ((event as KeyboardEvent).key !== "Escape" || !element.classList.contains("open")) return
@@ -187,7 +187,8 @@ export const mountToolbar = (
     }
     if (options.closeOnSelect) listen(box, "click", close)
     listen(doc, "pointerdown", (event) => {
-      if (event.target instanceof Node && !element.contains(event.target)) close()
+      const target = event.target as Node | null
+      if (target !== null && !element.contains(target)) close()
     })
     const pop: Pop = {
       element,
