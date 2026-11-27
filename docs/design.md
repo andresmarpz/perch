@@ -35,13 +35,15 @@ src/domain/              Pure logic, no DOM, no chrome.*. Fully unit tested.
   irc.ts                 Parse IRC lines (tags, prefix, command, params); split multi-line frames
   chat.ts                ChatMessage model; PRIVMSG -> ChatMessage; emote ranges -> text/emote segments
   settings.ts            Settings Schema, defaults, decode with fallback for missing/corrupt fields
-  hotkey.ts              Parse "Alt+Shift+P", match a KeyboardEvent-like record, format for display
+  hotkey.ts              Parse "Alt+Shift+P", match a KeyboardEvent-like record, format for display, record a combo
+  chatLog.ts             Pure lite-chat log: 150-line cap, ClearChat/ClearMsg, scroll-at-bottom test
   layout.ts              Layout kinds, which chat source a layout allows, PiP size for a layout
 src/services/            Effect services (Context.Service + Layer). Thin wrappers over browser APIs.
   SettingsStore.ts       get / set / changes Stream over chrome.storage.sync, decoded with settings.ts
   TwitchPage.ts          Find video, player bar, channel; inject the button; Stream of route changes
   LiteChat.ts            Stream<ChatMessage> from anonymous IRC WebSocket, keepalive, reconnect with backoff
   PipSession.ts          Scoped PiP session: open window, move video in, render UI, restore on release
+                         (also exports `requestPipWindow`, the sync call the click handler makes)
 src/ui/                  DOM rendering (no Effect inside render functions; callbacks in, elements out)
   h.ts                   Typed element helper
   pip/                   PiP document: root, toolbar, chat panel (embed iframe or lite list), styles
@@ -62,7 +64,17 @@ The content script runs on `https://www.twitch.tv/*` and `https://twitch.tv/*`. 
 and the player is present, it injects a PiP button into the visible right control group
 (`.player-controls__right-control-group`, before the fullscreen button; there are two copies of the control groups, use
 the visible one). The button and the hotkey `keydown` both carry user activation, which
-`documentPictureInPicture.requestWindow` needs. Opening while a session is open focuses or closes it (toggle).
+`documentPictureInPicture.requestWindow` needs. Opening while a session is open closes it (toggle). The button is injected on every channel route (the route test in
+`domain/channel.ts`), not gated on the live check from the spike: an offline channel has no usable video in a preview player
+and the session fails with `PlayerNotFound` only when no `<video>` exists.
+
+### Gesture handling
+
+`documentPictureInPicture.requestWindow` must run in the click or keydown handler's synchronous turn. The entry point
+calls `requestPipWindow(size)` there (no Effect hop first) and hands the resulting `Promise<Window>` to
+`PipSession.open(channel, promise)`. The size comes from a settings copy the content script keeps in memory, because
+reading `chrome.storage` is async. `PipSession.stateUnsafe()` (`idle | opening | open`) is the sync toggle check: `open`
+closes the session, `opening` is ignored.
 
 ### The session (PipSession)
 
@@ -72,9 +84,14 @@ One `Effect.scoped` program per session:
 2. Acquire: remember the video's parent and next sibling, move the `<video>` (`[data-a-target="video-ref"] video`) into
    the PiP document. Release: put it back. If the original parent is gone (SPA navigation), put it into the current
    `[data-a-target="video-ref"]`. If none exists, drop it.
-3. Render the PiP UI (see below), subscribe to settings changes, persist window size on `resize` (debounced 500 ms).
+3. Render the PiP UI (see below), subscribe to settings changes, persist window size on `resize` (debounced 500 ms, inner
+   size, tagged with the layout active when the event fired). A layout change calls `resizeTo` with the saved size
+   (outer size = saved inner size + window chrome); a refusal is ignored.
+   The video's playing state is kept: if it played before a move, `play()` is retried at 0, 120 and 500 ms after the move.
 4. The session ends (scope closes) on the first of: PiP `pagehide` (user closed the window), the toolbar's back-to-tab
-   button, the route leaving the channel the session started on, the content script being torn down.
+   button, the route leaving the channel the session started on, the content script being torn down. `pagehide` restores
+   the video synchronously in the event handler; the rest runs through the scope. If the page already holds another
+   `<video>` where the original lived (Twitch re-rendered), ours is dropped.
 
 The session must never leave the tab without its video. Every exit path goes through the scope's release.
 
@@ -86,8 +103,15 @@ The session must never leave the tab without its video. Every exit path goes thr
 - **Chat sources:** `twitch` = the official embed iframe
   `https://www.twitch.tv/embed/<channel>/chat?parent=www.twitch.tv&darkpopout` (interactive when logged in);
   `lite` = our own read-only renderer fed by LiteChat (needed for overlay, lighter, styleable). Overlay always uses lite.
-  The iframe needs `flex: none` or the video squeezes it to 0 px.
-- **Toolbar:** appears on hover over the PiP window, fades out after 2 s idle. Controls: play/pause, mute, volume
+  The embed's `parent` is the opener's hostname. The root is a CSS grid, so the iframe has its own cell and cannot be
+  squeezed to 0 px.
+- **Embed font size:** the Twitch embed cannot be restyled, so `chatFontSize / 13` scales the iframe with a CSS transform
+  (width and height are divided by the same factor so it still fills the panel).
+- **Toolbar:** a floating bar at the top of the window (never over the chat input). It appears on pointer movement
+  (a 44 px hot zone at the top catches movement over the cross-origin iframe), on keyboard focus, and fades out after 2 s
+  idle; it never hides while the pointer is over it. The chat-source and font buttons hide in `video`, the source
+  button is disabled in `overlay`, the opacity slider shows only in `overlay`. The opacity slider previews on `input`
+  and saves on `change` (chrome.storage.sync allows 120 writes a minute). Controls: play/pause, mute, volume
   slider, layout picker (4 buttons), chat source toggle (hidden in `video` layout), chat font size -/+, overlay opacity
   (only in `overlay`), back to tab. Every control has an `aria-label` and a `data-testid`.
 - **Look:** dark, Twitch purple accent `#9146FF`, system font, 8 px radius, subtle blur behind the toolbar. Lite chat
@@ -127,7 +151,7 @@ cannot be tested headless. Ship it behind the setting, mark it experimental in t
 ## Effect conventions
 
 - Services: `Context.Service` classes with a `layer`. Pure logic stays in `src/domain` as plain functions.
-- Errors: `Schema.TaggedErrorClass` (check the exact Effect 4 name in effect-smol), e.g. `PipUnsupported`,
+- Errors: `Schema.TaggedError<Self>()("Tag", fields)`, e.g. `PipUnsupported`,
   `PlayerNotFound`, `PipOpenFailed`. Expected failures are typed; defects are bugs.
 - The content script builds one `ManagedRuntime` from the app layer and disposes it on `pagehide`.
 - No `Effect.runPromise` scattered in UI code: UI callbacks call one `run` function provided by the entry point.

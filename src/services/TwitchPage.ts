@@ -3,13 +3,14 @@ import { parseRoute, sameRoute, type Route } from "../domain/channel.ts"
 
 export const selectors = {
   player: '[data-a-target="video-player"]',
+  videoRef: '[data-a-target="video-ref"]',
   video: '[data-a-target="video-ref"] video',
   anyVideo: "video",
   rightControls: ".player-controls__right-control-group",
   fullscreenButton: '[data-a-target="player-fullscreen-button"]',
 } as const
 
-export const buttonTestId = "twitch-pip-button"
+export const buttonTestId = "pip-open"
 
 const replaceDelayMs = 150
 
@@ -34,7 +35,7 @@ const pipIcon =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M19 7h-8v6h8V7zm2-4H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H3V5h18v14z"/></svg>'
 
 const buttonStyle =
-  "display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;cursor:pointer"
+  "display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:0;border-radius:4px;background:transparent;color:#efeff1;cursor:pointer"
 
 const createButton = (doc: Document, onClick: () => void): HTMLElement => {
   const wrapper = doc.createElement("div")

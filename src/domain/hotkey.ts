@@ -86,3 +86,31 @@ export const matches = (hotkey: Hotkey, event: KeyEventLike): boolean =>
   event.shiftKey === hotkey.shift &&
   event.metaKey === hotkey.meta &&
   keyMatches(hotkey, event)
+
+export type Recorded =
+  | { readonly _tag: "Hotkey"; readonly hotkey: Hotkey }
+  | { readonly _tag: "Pending" }
+  | { readonly _tag: "NeedsModifier" }
+  | { readonly _tag: "UnsupportedKey" }
+
+const modifierKeys: ReadonlySet<string> = new Set(["Control", "Alt", "Shift", "Meta", "AltGraph", "OS"])
+
+const keyFromCode = (code: string): string | undefined => {
+  const letter = /^Key([A-Z])$/.exec(code)
+  if (letter !== null) return letter[1]
+  const digit = /^Digit([0-9])$/.exec(code)
+  if (digit !== null) return digit[1]
+  if (/^F([1-9]|1[0-2])$/.test(code)) return code
+  return namedKeys[code.toLowerCase()]
+}
+
+export const recordHotkey = (event: KeyEventLike): Recorded => {
+  if (modifierKeys.has(event.key)) return { _tag: "Pending" }
+  if (!event.ctrlKey && !event.altKey && !event.metaKey) return { _tag: "NeedsModifier" }
+  const key = keyFromCode(event.code) ?? normalizeKey(event.key)
+  if (key === undefined) return { _tag: "UnsupportedKey" }
+  return {
+    _tag: "Hotkey",
+    hotkey: { ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey, meta: event.metaKey, key },
+  }
+}

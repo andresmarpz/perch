@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { formatHotkey, matches, parseHotkey, type KeyEventLike } from "./hotkey.ts"
+import { formatHotkey, matches, parseHotkey, recordHotkey, type KeyEventLike } from "./hotkey.ts"
 
 const event = (over: Partial<KeyEventLike>): KeyEventLike => ({
   key: "",
@@ -79,5 +79,42 @@ describe("matches", () => {
 
   test("falls back to key when code is empty", () => {
     expect(matches(hotkey, event({ key: "p", altKey: true, shiftKey: true }))).toBe(true)
+  })
+})
+
+describe("recordHotkey", () => {
+  const ev = (over: Partial<KeyEventLike>): KeyEventLike => ({
+    key: "p",
+    code: "KeyP",
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...over,
+  })
+
+  test("waits while only a modifier is down", () => {
+    expect(recordHotkey(ev({ key: "Alt", code: "AltLeft", altKey: true }))._tag).toBe("Pending")
+  })
+
+  test("rejects a combo without Alt, Ctrl or Meta", () => {
+    expect(recordHotkey(ev({ shiftKey: true }))._tag).toBe("NeedsModifier")
+    expect(recordHotkey(ev({}))._tag).toBe("NeedsModifier")
+  })
+
+  test("uses the physical key so Option on macOS still records the letter", () => {
+    const result = recordHotkey(ev({ key: "π", altKey: true, shiftKey: true }))
+    expect(result._tag === "Hotkey" && formatHotkey(result.hotkey)).toBe("Alt+Shift+P")
+  })
+
+  test("rejects keys that cannot be a hotkey", () => {
+    expect(recordHotkey(ev({ key: "Dead", code: "Backquote", ctrlKey: true }))._tag).toBe("UnsupportedKey")
+  })
+
+  test("records function keys and arrows", () => {
+    const f = recordHotkey(ev({ key: "F5", code: "F5", ctrlKey: true }))
+    expect(f._tag === "Hotkey" && formatHotkey(f.hotkey)).toBe("Ctrl+F5")
+    const a = recordHotkey(ev({ key: "ArrowUp", code: "ArrowUp", metaKey: true }))
+    expect(a._tag === "Hotkey" && formatHotkey(a.hotkey)).toBe("Meta+ArrowUp")
   })
 })
