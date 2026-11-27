@@ -171,3 +171,16 @@ describe("readableColor", () => {
     for (const c of colors) expect(contrastOf(c)).toBeGreaterThanOrEqual(4.4)
   })
 })
+
+describe("ROOMSTATE", () => {
+  test("gives the room id", () => {
+    expect(toChatEvent(line("@room-id=39276140;slow=0 :tmi.twitch.tv ROOMSTATE #rubius"))).toEqual({
+      _tag: "Room",
+      channelId: "39276140",
+    })
+  })
+
+  test("without a room id gives nothing", () => {
+    expect(toChatEvent(line("@slow=0 :tmi.twitch.tv ROOMSTATE #rubius"))).toBeUndefined()
+  })
+})

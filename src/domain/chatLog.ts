@@ -18,6 +18,7 @@ export const applyChatEvent = (
     case "ClearMsg":
       return log.filter((line) => line.id !== event.messageId)
     case "Status":
+    case "Room":
       return log
   }
 }

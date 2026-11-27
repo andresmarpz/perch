@@ -1,8 +1,15 @@
 import { nickOf, type IrcLine } from "./irc.ts"
+import type { SevenTvEmote, SevenTvEmotes } from "./sevenTv.ts"
 
 export type Segment =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "emote"; readonly id: string; readonly name: string }
+  | { readonly kind: "sevenTv"; readonly name: string; readonly emote: SevenTvEmote }
+  | {
+    readonly kind: "stack"
+    readonly base: Segment
+    readonly overlays: ReadonlyArray<{ readonly name: string; readonly emote: SevenTvEmote }>
+  }
 
 export interface ChatMessage {
   readonly id: string
@@ -18,6 +25,7 @@ export type ChatStatus = "connecting" | "connected" | "reconnecting"
 export type ChatEvent =
   | { readonly _tag: "Message"; readonly message: ChatMessage }
   | { readonly _tag: "Status"; readonly status: ChatStatus }
+  | { readonly _tag: "Room"; readonly channelId: string }
   | { readonly _tag: "ClearChat"; readonly channel: string; readonly login: string | undefined }
   | { readonly _tag: "ClearMsg"; readonly channel: string; readonly messageId: string }
 
@@ -59,6 +67,57 @@ export const segments = (text: string, emotesTag: string): ReadonlyArray<Segment
   return out
 }
 
+const isEmoteSegment = (segment: Segment | undefined): segment is Segment =>
+  segment !== undefined && segment.kind !== "text"
+
+export const withSevenTv = (input: ReadonlyArray<Segment>, emotes: SevenTvEmotes): ReadonlyArray<Segment> => {
+  if (emotes.size === 0) return input
+  const out: Array<Segment> = []
+  const pushText = (text: string) => {
+    const last = out[out.length - 1]
+    if (last?.kind === "text") out[out.length - 1] = { kind: "text", text: last.text + text }
+    else out.push({ kind: "text", text })
+  }
+  let pendingSpace = ""
+  const flushSpace = () => {
+    if (pendingSpace !== "") pushText(pendingSpace)
+    pendingSpace = ""
+  }
+  for (const segment of input) {
+    if (segment.kind !== "text") {
+      flushSpace()
+      out.push(segment)
+      continue
+    }
+    for (const token of segment.text.split(/( +)/)) {
+      if (token === "") continue
+      if (token.startsWith(" ")) {
+        pendingSpace += token
+        continue
+      }
+      const emote = emotes.get(token)
+      if (emote === undefined) {
+        flushSpace()
+        pushText(token)
+        continue
+      }
+      const previous = out[out.length - 1]
+      if (emote.zeroWidth && isEmoteSegment(previous)) {
+        const overlay = { name: token, emote }
+        out[out.length - 1] = previous.kind === "stack"
+          ? { kind: "stack", base: previous.base, overlays: [...previous.overlays, overlay] }
+          : { kind: "stack", base: previous, overlays: [overlay] }
+        pendingSpace = ""
+        continue
+      }
+      flushSpace()
+      out.push({ kind: "sevenTv", name: token, emote })
+    }
+  }
+  flushSpace()
+  return out
+}
+
 const hexColor = /^#[0-9a-fA-F]{6}$/
 const actionPattern = /^\u0001ACTION ?([\s\S]*?)\u0001?$/
 
@@ -94,6 +153,10 @@ export const toChatEvent = (line: IrcLine): ChatEvent | undefined => {
     case "PRIVMSG": {
       const message = fromPrivmsg(line)
       return message === undefined ? undefined : { _tag: "Message", message }
+    }
+    case "ROOMSTATE": {
+      const channelId = line.tags["room-id"]
+      return channelId === undefined || channelId === "" ? undefined : { _tag: "Room", channelId }
     }
     case "CLEARCHAT":
       return { _tag: "ClearChat", channel, login: line.trailing === "" ? undefined : line.trailing }

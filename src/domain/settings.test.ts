@@ -19,6 +19,7 @@ describe("decodeSettings", () => {
       hotkey: "Ctrl+Alt+K",
       autoPip: true,
       pipQuality: "twitch",
+      sevenTv: false,
       windowSizes: {
         video: { width: 500, height: 300 },
         side: { width: 800, height: 320 },

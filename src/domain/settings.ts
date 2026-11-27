@@ -15,6 +15,7 @@ export const SettingsSchema = Schema.Struct({
   hotkey: Schema.String,
   autoPip: Schema.Boolean,
   pipQuality: Schema.Literals(pipQualities),
+  sevenTv: Schema.Boolean,
   windowSizes: Schema.Struct({
     video: WindowSizeSchema,
     side: WindowSizeSchema,
@@ -40,6 +41,7 @@ export const defaults: Settings = {
   hotkey: "Alt+Shift+P",
   autoPip: false,
   pipQuality: "max",
+  sevenTv: true,
   windowSizes: defaultWindowSizes,
 }
 
@@ -91,6 +93,7 @@ export const decodeSettings = (input: unknown): Settings => {
     hotkey: decodeHotkey(raw["hotkey"]),
     autoPip: decodeField(SettingsSchema.fields.autoPip, raw["autoPip"], defaults.autoPip),
     pipQuality: decodeField(SettingsSchema.fields.pipQuality, raw["pipQuality"], defaults.pipQuality),
+    sevenTv: decodeField(SettingsSchema.fields.sevenTv, raw["sevenTv"], defaults.sevenTv),
     windowSizes: decodeWindowSizes(raw["windowSizes"]),
   }
 }
