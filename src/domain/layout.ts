@@ -9,14 +9,7 @@ export interface WindowSize {
   readonly height: number
 }
 
-export type WindowSizes = Readonly<Record<Layout, WindowSize>>
-
-export const defaultWindowSizes: WindowSizes = {
-  video: { width: 480, height: 270 },
-  side: { width: 760, height: 300 },
-  below: { width: 420, height: 560 },
-  overlay: { width: 480, height: 270 },
-}
+export const defaultWindowSize: WindowSize = { width: 760, height: 300 }
 
 export const chatSourceFor = (layout: Layout, preferred: ChatSource): ChatSource | undefined => {
   switch (layout) {

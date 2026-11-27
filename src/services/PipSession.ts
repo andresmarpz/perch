@@ -1,6 +1,6 @@
 import { Context, Effect, Exit, Fiber, Latch, Layer, Option, Queue, Scope, Stream, SubscriptionRef } from "effect"
 import type { ChatEvent } from "../domain/chat.ts"
-import { chatSourceFor, type Layout, type WindowSize } from "../domain/layout.ts"
+import { chatSourceFor, type WindowSize } from "../domain/layout.ts"
 import type { Settings } from "../domain/settings.ts"
 import { mountPipUi } from "../ui/pip/index.ts"
 import { PipOpenFailed, PipUnsupported, PlayerNotFound } from "./errors.ts"
@@ -21,11 +21,6 @@ export const requestPipWindow = (size: WindowSize | undefined): Promise<Window> 
   const api = (window as unknown as { readonly documentPictureInPicture?: DocumentPipApi }).documentPictureInPicture
   return api === undefined ? Promise.reject(new PipUnsupported()) : api.requestWindow(size)
 }
-
-const outerSizeFor = (pip: Window, inner: WindowSize): WindowSize => ({
-  width: inner.width + (pip.outerWidth - pip.innerWidth),
-  height: inner.height + (pip.outerHeight - pip.innerHeight),
-})
 
 export interface SessionOptions {
   readonly settings: Settings
@@ -154,7 +149,6 @@ export class PipSession extends Context.Service<PipSession, {
           yield* Stream.fromQueue(patches).pipe(Stream.runForEach(savePatch), Effect.forkScoped)
 
           let applied = initial
-          let layout: Layout = initial.layout
 
           let roomId: string | undefined
           let emotesRequested = false
@@ -200,28 +194,20 @@ export class PipSession extends Context.Service<PipSession, {
           yield* store.changes.pipe(
             Stream.runForEach((next) =>
               Effect.gen(function*() {
-                const layoutChanged = next.layout !== applied.layout
                 if (next.pipQuality !== applied.pipQuality) setPageBoost(next.pipQuality === "max")
                 applied = next
-                layout = next.layout
                 ui.update(next)
                 yield* syncChat(next)
                 yield* syncEmotes(next)
-                if (layoutChanged) {
-                  yield* Effect.try(() => {
-                    const size = outerSizeFor(pip, next.windowSizes[next.layout])
-                    pip.resizeTo(size.width, size.height)
-                  }).pipe(Effect.ignore)
-                }
               })
             ),
             Effect.forkScoped,
           )
 
-          const resizes = Stream.callback<{ readonly layout: Layout; readonly size: WindowSize }>(
+          const resizes = Stream.callback<WindowSize>(
             Effect.fn(function*(queue) {
               const listener = () =>
-                void Queue.offerUnsafe(queue, { layout, size: { width: pip.innerWidth, height: pip.innerHeight } })
+                void Queue.offerUnsafe(queue, { width: pip.innerWidth, height: pip.innerHeight })
               yield* Effect.acquireRelease(
                 Effect.sync(() => pip.addEventListener("resize", listener)),
                 () => Effect.sync(() => pip.removeEventListener("resize", listener)),
@@ -230,12 +216,9 @@ export class PipSession extends Context.Service<PipSession, {
             { bufferSize: 4, strategy: "sliding" },
           )
           yield* resizes.pipe(
-            Stream.groupByKey(({ layout: forLayout }) => forLayout),
-            Stream.flatMap(([, sizes]) => sizes.pipe(Stream.debounce("500 millis")), { concurrency: "unbounded" }),
-            Stream.runForEach(({ layout: forLayout, size }) =>
-              store.update((current) => ({ ...current, windowSizes: { ...current.windowSizes, [forLayout]: size } })).pipe(
-                Effect.ignore,
-              )
+            Stream.debounce("500 millis"),
+            Stream.runForEach((size) =>
+              store.update((current) => ({ ...current, windowSize: size })).pipe(Effect.ignore)
             ),
             Effect.forkScoped,
           )

@@ -243,9 +243,9 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
       "section",
       { class: "card" },
       row(
-        "Window sizes",
-        "Each layout remembers the size you gave it.",
-        confirmButton("Reset sizes", "opt-reset-sizes", callbacks.resetSizes, "Click again to reset"),
+        "Window size",
+        "The size of the first window you open. Later windows reopen where you left them.",
+        confirmButton("Reset size", "opt-reset-sizes", callbacks.resetSizes, "Click again to reset"),
       ),
       row(
         "Reset everything",

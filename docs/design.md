@@ -9,7 +9,7 @@ chat beside it, under it, or over it.
   always-on-top PiP window.
 - In the PiP window: choose a layout, choose a chat source, control playback, and close back to the tab. The stream keeps
   playing through every transition.
-- Settings persist (chrome.storage.sync), including the PiP window size per layout.
+- Settings persist (chrome.storage.sync), including the PiP window size (one size for all layouts).
 - Works logged out and logged in. No Twitch API keys, no servers, no tracking.
 
 Out of scope: BTTV/FFZ emotes in lite chat, VOD/clip pages, Firefox/Safari, sending chat from lite chat.
@@ -39,7 +39,7 @@ src/domain/              Pure logic, no DOM, no chrome.*. Fully unit tested.
   settings.ts            Settings Schema, defaults, decode with fallback for missing/corrupt fields
   hotkey.ts              Parse "Alt+Shift+P", match a KeyboardEvent-like record, format for display, record a combo
   chatLog.ts             Pure lite-chat log: 150-line cap, ClearChat/ClearMsg, scroll-at-bottom test
-  layout.ts              Layout kinds, which chat source a layout allows, default PiP size per layout
+  layout.ts              Layout kinds, which chat source a layout allows, default PiP size
 src/services/            Effect services (Context.Service + Layer). Thin wrappers over browser APIs.
   SettingsStore.ts       get / set / update / changes Stream over chrome.storage.sync, decoded with settings.ts
   TwitchPage.ts          Find video, player bar, channel; inject the button; Stream of route changes
@@ -93,13 +93,12 @@ Chrome restores a PiP window's last position only when the new request has the s
 
 One `Effect.scoped` program per session:
 
-1. Acquire: `requestWindow({ width, height })` with the saved size for the current layout. Release: `pipWindow.close()`.
+1. Acquire: `requestWindow({ width, height })` with the saved size (first open of a browser session only). Release: `pipWindow.close()`.
 2. Acquire: remember the video's parent and next sibling, move the `<video>` (`[data-a-target="video-ref"] video`) into
    the PiP document. Release: put it back. If the original parent is gone (SPA navigation), put it into the current
    `[data-a-target="video-ref"]`. If none exists, drop it.
-3. Render the PiP UI (see below), subscribe to settings changes, persist window size on `resize` (debounced 500 ms per
-   layout, inner size, tagged with the layout active when the event fired, written with `SettingsStore.update`). A layout
-   change calls `resizeTo` with the saved size (outer size = saved inner size + window chrome); a refusal is ignored.
+3. Render the PiP UI (see below), subscribe to settings changes, persist window size on `resize` (debounced 500 ms,
+   inner size, written with `SettingsStore.update`; one size for all layouts). A layout change never resizes the window; the new layout fills the current size.
    The video's playing state is kept: if it played before a move, `play()` is retried at 0, 120 and 500 ms after the move.
    The retries stop when the video resumed and then paused (the user paused it) and when the session ends.
 4. The session ends (scope closes) on the first of: PiP `pagehide` (user closed the window), the toolbar's back-to-tab
@@ -192,8 +191,8 @@ written when the session closes, so a change made just before the end is not los
 ### PiP UI
 
 - **Layouts:** `video` (video only), `side` (chat on the right), `below` (chat under the video), `overlay` (lite chat
-  over the video, transparent, bottom left). Layout switches resize the window with `resizeTo` (allowed: the click is a
-  user gesture) to the saved size for that layout.
+  over the video, transparent, bottom left). Layout switches never resize the window: the layout
+  fills the current size (video only letterboxes with `object-fit: contain`).
 - **Chat sources:** `twitch` = the official embed iframe
   `https://www.twitch.tv/embed/<channel>/chat?parent=www.twitch.tv&darkpopout` (interactive when logged in);
   `lite` = our own read-only renderer fed by LiteChat (needed for overlay, lighter, styleable). Overlay always uses lite.
@@ -249,7 +248,7 @@ overlayOpacity: 0.2..1                                  default 0.85
 hotkey: string                                          default "Alt+Shift+P"
 autoPip: boolean                                        default false (stretch, see below)
 pipQuality: "max" | "twitch"                            default "max" (see PiP boost)
-windowSizes: { [layout]: { width, height } }            defaults: video 480x270, side 760x300, below 420x560, overlay 480x270
+windowSize: { width, height }                           default 760x300 (first open of a browser session)
 ```
 
 Decoding never fails the app: unknown or invalid fields fall back to defaults field by field. The options page edits

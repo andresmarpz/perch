@@ -18,8 +18,8 @@ opens the options page. Open a channel that is live now at `https://www.twitch.t
 - [ ] The window is always on top and has the real title bar with the native close button.
 - [ ] The video keeps playing through open, layout changes and close. Pause in the PiP toolbar, close: the tab video stays paused.
 - [ ] Click the native close button: the video is back in the tab and plays.
-- [ ] Drag the window edge. Close and reopen: the same layout opens at the size you left it.
-- [ ] Change layout from the toolbar: the window resizes to that layout's saved size (Chrome may refuse; the layout still changes).
+- [ ] Drag the window edge. Close and reopen: the window reopens at the size you left it.
+- [ ] Change layout from the toolbar: the window keeps its size and the layout fills it.
 - [ ] Open the PiP, click another channel in the side nav: the PiP closes and the tab shows the new channel's video.
 - [ ] Open the PiP, reload the extension in `chrome://extensions`: the PiP closes and the tab video keeps playing (reload the tab to get the button back).
 - [ ] Open the PiP at the narrowest width (about 320 px, side layout): the toolbar fits over the video and the more menu holds mute, volume and the chat controls.

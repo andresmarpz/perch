@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect"
 import { formatHotkey, parseHotkey } from "./hotkey.ts"
-import { chatSources, defaultWindowSizes, layouts, type Layout, type WindowSize } from "./layout.ts"
+import { chatSources, defaultWindowSize, layouts, type WindowSize } from "./layout.ts"
 
 export const pipQualities = ["max", "twitch"] as const
 export type PipQuality = (typeof pipQualities)[number]
@@ -16,12 +16,7 @@ export const SettingsSchema = Schema.Struct({
   autoPip: Schema.Boolean,
   pipQuality: Schema.Literals(pipQualities),
   sevenTv: Schema.Boolean,
-  windowSizes: Schema.Struct({
-    video: WindowSizeSchema,
-    side: WindowSizeSchema,
-    below: WindowSizeSchema,
-    overlay: WindowSizeSchema,
-  }),
+  windowSize: WindowSizeSchema,
 })
 
 export type Settings = typeof SettingsSchema.Type
@@ -42,7 +37,7 @@ export const defaults: Settings = {
   autoPip: false,
   pipQuality: "max",
   sevenTv: true,
-  windowSizes: defaultWindowSizes,
+  windowSize: defaultWindowSize,
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
@@ -70,12 +65,6 @@ const decodeSize = (input: unknown, fallback: WindowSize): WindowSize => {
   }
 }
 
-const decodeWindowSizes = (input: unknown): Settings["windowSizes"] => {
-  const raw = record(input)
-  const size = (layout: Layout) => decodeSize(raw[layout], defaultWindowSizes[layout])
-  return { video: size("video"), side: size("side"), below: size("below"), overlay: size("overlay") }
-}
-
 export const decodeSettings = (input: unknown): Settings => {
   const raw = record(input)
   return {
@@ -94,6 +83,6 @@ export const decodeSettings = (input: unknown): Settings => {
     autoPip: decodeField(SettingsSchema.fields.autoPip, raw["autoPip"], defaults.autoPip),
     pipQuality: decodeField(SettingsSchema.fields.pipQuality, raw["pipQuality"], defaults.pipQuality),
     sevenTv: decodeField(SettingsSchema.fields.sevenTv, raw["sevenTv"], defaults.sevenTv),
-    windowSizes: decodeWindowSizes(raw["windowSizes"]),
+    windowSize: decodeSize(raw["windowSize"] ?? record(raw["windowSizes"])["side"], defaults.windowSize),
   }
 }

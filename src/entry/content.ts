@@ -49,7 +49,7 @@ const main = Effect.gen(function*() {
     const route = parseRoute(window.location.href)
     if (route._tag !== "Channel") return
     if (page.videoUnsafe() === null) return run(Effect.logWarning("twitch-pip: no player video on this page"))
-    const pending = requestPipWindow(sizeToRequest(openedBefore, settings.windowSizes[settings.layout]))
+    const pending = requestPipWindow(sizeToRequest(openedBefore, settings.windowSize))
     void pending.then(() => markOpened()).then((marked) => void (openedBefore ||= marked), () => undefined)
     run(
       session.open(route.channel, pending, { settings, onKeydown }).pipe(

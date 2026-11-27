@@ -1,5 +1,5 @@
 import { Effect, ManagedRuntime, Stream } from "effect"
-import { defaultWindowSizes } from "../domain/layout.ts"
+import { defaultWindowSize } from "../domain/layout.ts"
 import { defaults } from "../domain/settings.ts"
 import { SettingsStore } from "../services/SettingsStore.ts"
 import { mountOptions } from "../ui/options/index.ts"
@@ -15,7 +15,7 @@ const program = Effect.gen(function*() {
   const store = yield* SettingsStore
   const view = mountOptions(root, yield* store.get, {
     patch: (patch) => run(store.set(patch)),
-    resetSizes: () => run(store.set({ windowSizes: defaultWindowSizes })),
+    resetSizes: () => run(store.set({ windowSize: defaultWindowSize })),
     resetAll: () => run(store.set(defaults)),
   })
   yield* store.changes.pipe(Stream.runForEach((settings) => Effect.sync(() => view.update(settings))))

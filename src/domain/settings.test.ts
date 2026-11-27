@@ -20,12 +20,7 @@ describe("decodeSettings", () => {
       autoPip: true,
       pipQuality: "twitch",
       sevenTv: false,
-      windowSizes: {
-        video: { width: 500, height: 300 },
-        side: { width: 800, height: 320 },
-        below: { width: 430, height: 600 },
-        overlay: { width: 510, height: 290 },
-      },
+      windowSize: { width: 800, height: 320 },
     }
     expect(decodeSettings(value)).toEqual(value)
   })
@@ -61,14 +56,21 @@ describe("decodeSettings", () => {
     expect(decodeSettings({ hotkey: "shift+alt+k" }).hotkey).toBe("Alt+Shift+K")
   })
 
-  test("window sizes decode per layout and per dimension", () => {
-    const result = decodeSettings({
-      windowSizes: { side: { width: 900, height: "tall" }, below: "nope", overlay: { width: 1, height: 99999 } },
+  test("window size decodes per dimension and is clamped", () => {
+    expect(decodeSettings({ windowSize: { width: 900, height: "tall" } }).windowSize).toEqual({
+      width: 900,
+      height: defaults.windowSize.height,
     })
-    expect(result.windowSizes.side).toEqual({ width: 900, height: defaults.windowSizes.side.height })
-    expect(result.windowSizes.below).toEqual(defaults.windowSizes.below)
-    expect(result.windowSizes.video).toEqual(defaults.windowSizes.video)
-    expect(result.windowSizes.overlay).toEqual({ width: limits.windowWidth.min, height: limits.windowHeight.max })
+    expect(decodeSettings({ windowSize: { width: 1, height: 99999 } }).windowSize).toEqual({
+      width: limits.windowWidth.min,
+      height: limits.windowHeight.max,
+    })
+  })
+
+  test("an old per-layout value migrates its side entry", () => {
+    const old = { windowSizes: { video: { width: 480, height: 270 }, side: { width: 900, height: 400 } } }
+    expect(decodeSettings(old).windowSize).toEqual({ width: 900, height: 400 })
+    expect(decodeSettings({ windowSizes: "nope" }).windowSize).toEqual(defaults.windowSize)
   })
 
   test("unknown fields are dropped", () => {
