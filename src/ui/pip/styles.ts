@@ -6,7 +6,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 
 .pip { position: relative; width: 100%; height: 100%; display: grid; overflow: hidden; background: var(--bg); --chat-font: 13; --overlay-opacity: 0.85; }
 .pip[data-layout="video"], .pip[data-layout="overlay"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.pip[data-layout="side"] { grid-template-columns: minmax(0, 1fr) clamp(200px, 40%, 380px); grid-template-rows: minmax(0, 1fr); }
+.pip[data-layout="side"] { grid-template-columns: minmax(0, 1fr) clamp(160px, 38%, 340px); grid-template-rows: minmax(0, 1fr); }
 .pip[data-layout="below"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 
 .stage, .zone { grid-area: 1 / 1; }
@@ -49,6 +49,10 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 .toolbar .group { display: flex; align-items: center; gap: 2px; flex: none; }
 .toolbar .group + .group { margin-left: 3px; padding-left: 5px; border-left: 1px solid var(--line); }
 .toolbar [hidden] { display: none !important; }
+.toolbar .group-more { display: none; }
+.toolbar[data-level="4"] .group-more { display: flex; }
+.toolbar[data-level="4"] .group-chat, .toolbar[data-level="4"] .pop-volume { display: none; }
+.toolbar[data-level="4"] .group + .group { margin-left: 0; padding-left: 0; border-left: 0; }
 
 .pop { position: relative; display: inline-flex; align-items: center; gap: 2px; }
 .pop-panel, .pop-box { display: contents; }
@@ -58,6 +62,8 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 .pop[data-collapsed="true"] .pop-box { display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 10px; background: rgba(24, 24, 27, 0.96); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,0.5); white-space: nowrap; }
 .pop-layout[data-collapsed="true"] .pop-box { flex-direction: column; align-items: stretch; }
 .pop-layout[data-collapsed="true"] .btn { justify-content: flex-start; }
+.pop-more[data-collapsed="true"] .pop-box { flex-direction: column; align-items: flex-start; gap: 4px; }
+.more-row { display: flex; align-items: center; gap: 2px; }
 .pop[data-collapsed="true"] .with-label { display: inline-flex; align-items: center; gap: 8px; }
 .pop[data-collapsed="true"] .label { display: inline; }
 .with-label { display: inline-flex; }

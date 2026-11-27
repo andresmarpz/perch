@@ -11,6 +11,7 @@ export type IconName =
   | "chat-lite"
   | "opacity"
   | "back"
+  | "more"
 
 const frame = '<rect x="3" y="5" width="18" height="14" rx="2.5"/>'
 
@@ -26,6 +27,7 @@ const paths: Readonly<Record<IconName, string>> = {
   "chat-twitch": '<path d="M5 4h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 16h-5l-4 4v-4H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 4z"/><path d="M9.5 8.5v3M14 8.5v3"/>',
   "chat-lite": '<path d="M4 6.5h16M4 12h11M4 17.5h14"/>',
   opacity: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>',
+  more: '<circle cx="5.5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.7" fill="currentColor" stroke="none"/>',
   back: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
 }
 

@@ -10,7 +10,6 @@ export interface ToolbarCallbacks {
 }
 
 export interface Toolbar {
-  readonly element: HTMLElement
   update(settings: Settings, source: ChatSource | undefined): void
   dispose(): void
 }
@@ -30,14 +29,17 @@ export interface ToolbarHosts {
 }
 
 const edgeGap = 8
-const levelCount = 4
-const popCollapseLevel = { volume: 1, layout: 2, chat: 3 } as const
+const levelCount = 5
+const moreLevel = levelCount - 1
+const popCollapseLevel = { volume: 1, layout: 2, chat: 3, more: moreLevel } as const
 
 interface Pop {
   readonly element: HTMLElement
-  collapse(collapsed: boolean): void
+  readonly box: HTMLElement
   close(): void
 }
+
+const isNode = (target: EventTarget | null): target is Node => target !== null && "nodeType" in target
 
 export const mountToolbar = (
   doc: Document,
@@ -48,9 +50,20 @@ export const mountToolbar = (
   const h = makeH(doc)
   let settings: Settings | undefined
   const cleanups: Array<() => void> = []
-  const listen = (target: EventTarget, type: string, handler: EventListener) => {
-    target.addEventListener(type, handler)
-    cleanups.push(() => target.removeEventListener(type, handler))
+  function listen<K extends keyof HTMLElementEventMap>(
+    target: HTMLElement,
+    type: K,
+    handler: (event: HTMLElementEventMap[K]) => void,
+  ): void
+  function listen<K extends keyof DocumentEventMap>(
+    target: Document,
+    type: K,
+    handler: (event: DocumentEventMap[K]) => void,
+  ): void
+  function listen(target: HTMLElement | Document, type: string, handler: (event: never) => void): void {
+    const listener = handler as EventListener
+    target.addEventListener(type, listener)
+    cleanups.push(() => target.removeEventListener(type, listener))
   }
 
   const button = (testid: string, label: string, content: Node, onClick: () => void, pressable = false) => {
@@ -90,7 +103,7 @@ export const mountToolbar = (
       button(
         `pip-layout-${layout}`,
         layoutLabels[layout],
-        h("span", { class: "with-label" }, icon(doc, `layout-${layout}` as IconName), h("span", { class: "label", props: { textContent: layoutLabels[layout] } })),
+        h("span", { class: "with-label" }, icon(doc, `layout-${layout}`), h("span", { class: "label", props: { textContent: layoutLabels[layout] } })),
         () => callbacks.patch({ layout }),
         true,
       ),
@@ -167,11 +180,10 @@ export const mountToolbar = (
       if (!suppress) open()
     })
     listen(element, "focusout", (event) => {
-      const next = (event as FocusEvent).relatedTarget as Node | null
-      if (next === null || !element.contains(next)) close()
+      if (!isNode(event.relatedTarget) || !element.contains(event.relatedTarget)) close()
     })
     listen(element, "keydown", (event) => {
-      if ((event as KeyboardEvent).key !== "Escape" || !element.classList.contains("open")) return
+      if (event.key !== "Escape" || !element.classList.contains("open")) return
       event.stopPropagation()
       suppress = true
       trigger.focus()
@@ -187,17 +199,9 @@ export const mountToolbar = (
     }
     if (options.closeOnSelect) listen(box, "click", close)
     listen(doc, "pointerdown", (event) => {
-      const target = event.target as Node | null
-      if (target !== null && !element.contains(target)) close()
+      if (isNode(event.target) && !element.contains(event.target)) close()
     })
-    const pop: Pop = {
-      element,
-      collapse: (value) => {
-        element.dataset["collapsed"] = String(value)
-        close()
-      },
-      close,
-    }
+    const pop: Pop = { element, box, close }
     pops.push(pop)
     return pop
   }
@@ -213,45 +217,83 @@ export const mountToolbar = (
   )
   mute.setAttribute("aria-haspopup", "true")
 
+  const moreTrigger = h(
+    "button",
+    { class: "btn", testid: "pip-more-menu", attrs: { type: "button", "aria-label": "More controls", title: "More controls", "aria-haspopup": "menu", "aria-expanded": "false" } },
+    icon(doc, "more"),
+  )
+
   const volumePop = makePop("volume", mute, [volume], { pinOnClick: false, closeOnSelect: false })
   const layoutPop = makePop("layout", layoutTrigger, layoutButtons.map(([, el]) => el), { pinOnClick: true, closeOnSelect: true })
   const chatPop = makePop("chat", chatTrigger, [fontDown, fontUp, opacityGroup], { pinOnClick: true, closeOnSelect: false })
-  const popFor = { volume: volumePop, layout: layoutPop, chat: chatPop } as const
+  const audioRow = h("div", { class: "more-row" })
+  const textRow = h("div", { class: "more-row" })
+  const morePop = makePop("more", moreTrigger, [], { pinOnClick: true, closeOnSelect: false })
+  const popFor = { volume: volumePop, layout: layoutPop, chat: chatPop, more: morePop } as const
 
-  const chatGroup = h("div", { class: "group" }, chatSource, chatPop.element)
+  const chatGroup = h("div", { class: "group group-chat" }, chatSource, chatPop.element)
   const element = h(
     "div",
     { class: "toolbar", testid: "pip-toolbar", attrs: { role: "toolbar", "aria-label": "Player controls", "data-level": "0" } },
     h("div", { class: "group" }, play, volumePop.element),
     h("div", { class: "group" }, layoutPop.element),
+    h("div", { class: "group group-more" }, morePop.element),
     chatGroup,
     h("div", { class: "group" }, back),
   )
   hosts.zone.append(element)
 
-  const applyLevel = (level: number) => {
+  let controlsInMore = false
+  const gatherInMore = () => {
+    audioRow.replaceChildren(mute, volume)
+    textRow.replaceChildren(fontDown, fontUp)
+    morePop.box.replaceChildren(audioRow, chatSource, textRow, opacityGroup)
+  }
+  const returnHome = () => {
+    volumePop.element.prepend(mute)
+    volumePop.box.replaceChildren(volume)
+    chatGroup.prepend(chatSource)
+    chatPop.box.replaceChildren(fontDown, fontUp, opacityGroup)
+  }
+
+  const paint = (level: number) => {
     element.dataset["level"] = String(level)
     for (const kind of Object.keys(popCollapseLevel) as Array<keyof typeof popCollapseLevel>) {
-      const collapsed = level >= popCollapseLevel[kind]
-      popFor[kind].collapse(collapsed)
-      if (kind !== "volume") (kind === "layout" ? layoutTrigger : chatTrigger).hidden = !collapsed
+      popFor[kind].element.dataset["collapsed"] = String(level >= popCollapseLevel[kind])
     }
+    layoutTrigger.hidden = level < popCollapseLevel.layout
+    chatTrigger.hidden = level < popCollapseLevel.chat
+    mute.setAttribute("aria-haspopup", String(level >= popCollapseLevel.volume && level < moreLevel))
+    const wantMore = level >= moreLevel
+    if (wantMore === controlsInMore) return
+    controlsInMore = wantMore
+    if (wantMore) gatherInMore()
+    else returnHome()
   }
-  const fit = () => {
+
+  let level = -1
+  let lastAvailable = 0
+  const fit = (explore: boolean) => {
     const available = hosts.zone.clientWidth - edgeGap * 2
-    let level = 0
-    for (; level < levelCount; level++) {
-      applyLevel(level)
+    let next = level < 0 || explore || available > lastAvailable ? 0 : level
+    lastAvailable = available
+    while (next < moreLevel) {
+      paint(next)
       if (element.offsetWidth <= available) break
+      next += 1
     }
-    if (level === levelCount) applyLevel(levelCount - 1)
+    paint(next)
+    if (next !== level) {
+      level = next
+      for (const pop of pops) pop.close()
+    }
     element.dataset["wide"] = String(element.offsetWidth > available)
   }
   const view = doc.defaultView
-  const observer = view === null ? undefined : new view.ResizeObserver(fit)
+  const observer = view === null ? undefined : new view.ResizeObserver(() => fit(false))
   observer?.observe(hosts.zone)
   cleanups.push(() => observer?.disconnect())
-  applyLevel(0)
+  paint(0)
 
   let hovering = false
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -296,17 +338,21 @@ export const mountToolbar = (
     mute.dataset["state"] = silent ? "muted" : "unmuted"
     volume.value = String(video.volume)
   }
-  for (const type of ["play", "pause", "playing", "ended"]) listen(video, type, syncPlayback)
+  for (const type of ["play", "pause", "playing", "ended"] as const) listen(video, type, syncPlayback)
   listen(video, "volumechange", syncVolume)
   syncPlayback()
   syncVolume()
 
   return {
-    element,
     update: (next, source) => {
+      const layoutChanged = settings?.layout !== next.layout
       settings = next
       for (const [layout, el] of layoutButtons) el.setAttribute("aria-pressed", String(layout === next.layout))
-      chatGroup.hidden = next.layout === "video"
+      const noChat = next.layout === "video"
+      chatGroup.hidden = noChat
+      chatSource.hidden = noChat
+      fontDown.hidden = noChat
+      fontUp.hidden = noChat
       chatSource.disabled = next.layout === "overlay"
       swap(chatSource, source === "lite" ? "chat-lite" : "chat-twitch")
       const label = next.layout === "overlay"
@@ -321,9 +367,9 @@ export const mountToolbar = (
       fontUp.disabled = next.chatFontSize >= limits.chatFontSize.max
       opacityGroup.hidden = next.layout !== "overlay"
       opacity.value = String(next.overlayOpacity)
-      layoutTrigger.replaceChildren(icon(doc, `layout-${next.layout}` as IconName))
+      layoutTrigger.replaceChildren(icon(doc, `layout-${next.layout}`))
       layoutTrigger.title = `Layout: ${layoutLabels[next.layout]}`
-      fit()
+      fit(layoutChanged)
     },
     dispose: () => {
       if (timer !== undefined) clearTimeout(timer)
