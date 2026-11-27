@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>__CHANNEL__ - Twitch</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { margin: 0; background: #0e0e10; color: #efeff1; font: 14px system-ui, sans-serif; }
+  .layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+  nav { padding: 12px; background: #1f1f23; }
+  nav a { display: block; color: #bf94ff; padding: 6px 0; }
+  main { padding: 12px; }
+  input[type="search"] { width: 100%; box-sizing: border-box; padding: 6px; }
+  .video-player { position: relative; width: 820px; max-width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden; }
+  [data-a-target="video-ref"] { position: absolute; inset: 0; }
+  [data-a-target="video-ref"] video { width: 100%; height: 100%; display: block; object-fit: contain; background: #000; }
+  [data-a-target="player-controls"] { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: linear-gradient(transparent, rgba(0,0,0,.7)); opacity: 0; transition: opacity .15s; }
+  .video-player:hover [data-a-target="player-controls"] { opacity: 1; }
+  .player-controls__left-control-group, .player-controls__right-control-group { display: flex; align-items: center; gap: 0; }
+  .InjectLayout { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; }
+  .InjectLayout button { width: 32px; height: 32px; border: 0; border-radius: 9000px; background: transparent; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  .InjectLayout button:hover { background: rgba(255,255,255,.13); }
+  .InjectLayout svg { width: 20px; height: 20px; }
+  .hidden-controls { display: none; }
+  [data-a-target="animated-channel-viewers-count"] { margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav>
+    <input type="search" data-a-target="tw-input" placeholder="Search" aria-label="Search">
+    <a href="/other" data-testid="nav-other">other</a>
+    <a href="/directory" data-testid="nav-directory">directory</a>
+  </nav>
+  <main>
+    <h1 data-a-target="stream-title">__CHANNEL__</h1>
+    <div class="video-player" data-a-target="video-player" data-a-player-type="site">
+      <div class="hidden-controls">
+        <div data-a-target="player-controls">
+          <div class="player-controls__left-control-group"></div>
+          <div class="player-controls__right-control-group">
+            <div class="InjectLayout"><button data-a-target="player-settings-button" aria-label="Settings">S</button></div>
+            <div class="InjectLayout"><button data-a-target="player-fullscreen-button" aria-label="Fullscreen (f)">F</button></div>
+          </div>
+        </div>
+      </div>
+      <div data-a-target="video-ref">
+        <video src="/__fixture/__VIDEO__" loop muted playsinline></video>
+        <div class="overlay-a"></div>
+        <div class="overlay-b"></div>
+      </div>
+      <div data-a-target="player-controls">
+        <div class="player-controls__left-control-group">
+          <div class="InjectLayout"><button data-a-target="player-play-pause-button" aria-label="Pause (space/k)">P</button></div>
+          <div class="InjectLayout"><button data-a-target="player-mute-unmute-button" aria-label="Mute (m)">M</button></div>
+        </div>
+        <div class="player-controls__right-control-group">
+          <div class="InjectLayout"><button data-a-target="player-settings-button" aria-label="Settings">S</button></div>
+          <div class="InjectLayout"><button aria-label="Theatre Mode (alt+t)">T</button></div>
+          <div class="InjectLayout"><button data-a-target="player-fullscreen-button" aria-label="Fullscreen (f)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3H3v4h2V5h2V3zm10 0v2h2v2h2V3h-4zM5 17H3v4h4v-2H5v-2zm14 0v2h-2v2h4v-4h-2z"/></svg></button></div>
+        </div>
+      </div>
+    </div>
+    <div data-a-target="animated-channel-viewers-count">1,234</div>
+  </main>
+</div>
+<script>
+  document.querySelector("video").play().catch(() => undefined)
+  document.querySelector('[data-testid="nav-other"]').addEventListener("click", (event) => {
+    event.preventDefault()
+    history.pushState({}, "", "/other")
+    document.title = "other - Twitch"
+  })
+</script>
+</body>
+</html>

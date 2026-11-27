@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "bun test src",
     "e2e": "playwright test",
+    "e2e:live": "LIVE=1 playwright test",
     "check": "bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
@@ -17,6 +18,8 @@
     "@playwright/test": "1.65.1",
     "@types/bun": "latest",
     "@types/chrome": "latest",
-    "typescript": "7.0.2"
+    "@types/ws": "8.18.2",
+    "typescript": "7.0.2",
+    "ws": "8.23.0"
   }
 }
