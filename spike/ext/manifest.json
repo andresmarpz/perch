@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "twitch-pip-spike",
+  "version": "0.0.1",
+  "content_scripts": [
+    { "matches": ["https://www.twitch.tv/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ]
+}

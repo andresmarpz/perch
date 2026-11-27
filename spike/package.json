@@ -1,0 +1,14 @@
+{
+  "name": "spike",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/bun": "latest",
+    "playwright": "^1.65.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
