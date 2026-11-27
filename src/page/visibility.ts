@@ -10,6 +10,7 @@ export interface VisibilityGuard {
 export const makeVisibilityGuard = (doc: Document, win: Window): VisibilityGuard => {
   let spoofing = false
   let blocking = false
+  let believedHidden = false
 
   const block = (event: Event) => {
     if (blocking) event.stopImmediatePropagation()
@@ -28,11 +29,10 @@ export const makeVisibilityGuard = (doc: Document, win: Window): VisibilityGuard
   return {
     enable: () => {
       if (spoofing) return
-      const wasHidden = realHidden()
+      believedHidden = realHidden()
       spoofing = true
       for (const key of stateKeys) Object.defineProperty(doc, key, { configurable: true, get: () => "visible" })
       for (const key of hiddenKeys) Object.defineProperty(doc, key, { configurable: true, get: () => false })
-      if (wasHidden) announce()
       blocking = true
     },
     disable: () => {
@@ -40,7 +40,7 @@ export const makeVisibilityGuard = (doc: Document, win: Window): VisibilityGuard
       spoofing = false
       blocking = false
       for (const key of [...stateKeys, ...hiddenKeys]) Reflect.deleteProperty(doc, key)
-      if (realHidden()) announce()
+      if (realHidden() !== believedHidden) announce()
     },
   }
 }

@@ -129,9 +129,11 @@ hidden. So the background-tab downgrade is the real cause; the player-size cap w
   (`mainWorld.js`, `run_at: document_start`, so its listeners come first) watches that attribute. While it is set,
   `document.visibilityState`, `hidden` and the `webkit*` variants read `visible` / `false` through own properties on
   `document`, and `visibilitychange` is stopped in the capture phase at `window` and `document`. When the attribute goes,
-  the own properties are deleted, so the real behaviour (or whatever sits on the prototype) is back, and if the tab is
-  really hidden at that moment one `visibilitychange` is dispatched so Twitch sees the true state. If the tab is really
-  hidden when the session starts, one `visibilitychange` is dispatched the other way so Twitch learns it is visible.
+  the own properties are deleted, so the real behaviour (or whatever sits on the prototype) is back, and if the tab's
+  real state differs from the one Twitch last saw, one `visibilitychange` is dispatched so Twitch catches up. Nothing is
+  dispatched when the session starts, even if the tab is really hidden (automatic PiP): announcing "visible" while the
+  video is being moved risks Twitch re-mounting its player, which would end the session at once. Quality is held by the
+  next point instead.
 - **Quality stays at the top.** The same script finds Twitch's player instance (from `.video-player__container`,
   `[data-a-target="video-player"]` and similar, walk the `__reactFiber$*` chain up to `mediaPlayerInstance`; the isolated
   world cannot see these expandos). It remembers `getQuality()` and `isAutoQualityMode()`, calls

@@ -143,7 +143,10 @@ export class PipSession extends Context.Service<PipSession, {
             () => Effect.sync(() => pip.document.removeEventListener("keydown", options.onKeydown, true)),
           )
 
-          yield* page.watchForeignVideo(player, () => Latch.openUnsafe(ended))
+          yield* page.watchForeignVideo(player, () => {
+            console.warn("twitch-pip: session ended, Twitch mounted another video")
+            Latch.openUnsafe(ended)
+          })
 
           yield* Stream.fromQueue(patches).pipe(Stream.runForEach(savePatch), Effect.forkScoped)
 
