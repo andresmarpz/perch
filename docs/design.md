@@ -107,13 +107,24 @@ The session must never leave the tab without its video. Every exit path goes thr
   squeezed to 0 px.
 - **Embed font size:** the Twitch embed cannot be restyled, so `chatFontSize / 13` scales the iframe with a CSS transform
   (width and height are divided by the same factor so it still fills the panel).
-- **Toolbar:** a floating bar at the top of the window (never over the chat input). It appears on pointer movement
-  (a 44 px hot zone at the top catches movement over the cross-origin iframe), on keyboard focus, and fades out after 2 s
-  idle; it never hides while the pointer is over it. The chat-source and font buttons hide in `video`, the source
-  button is disabled in `overlay`, the opacity slider shows only in `overlay`. The opacity slider previews on `input`
-  and saves on `change` (chrome.storage.sync allows 120 writes a minute). Controls: play/pause, mute, volume
-  slider, layout picker (4 buttons), chat source toggle (hidden in `video` layout), chat font size -/+, overlay opacity
-  (only in `overlay`), back to tab. Every control has an `aria-label` and a `data-testid`.
+- **Toolbar:** a floating bar centered over the video area only (it lives in a `.zone` layer that shares the stage's
+  grid cell, so it is never centered over the chat panel; if the stage is narrower than the toolbar it anchors to the
+  left edge and overlaps the chat). It always stays on one row. A `ResizeObserver` on the zone picks the first
+  of four collapse levels whose measured width fits: 0 everything inline; 1 the volume slider moves into a popover on
+  the mute button; 2 the four layout buttons become one layout button with a menu; 3 font -/+ and opacity move into a
+  "chat" popover. Back-to-tab, play/pause, mute and the chat-source button are always inline. A popover opens on hover or
+  keyboard focus of its button, a click pins it, Escape or an outside click closes it, and it stays inside the window.
+  The same DOM nodes are used inline and in popovers, so every `data-testid` exists once (inside a collapsed popover it
+  is visible only while the popover is open). The toolbar appears on pointer movement over the stage and on keyboard
+  focus, and fades out after 2 s idle; it never hides while the pointer is over it. The chat-source and font buttons hide
+  in `video`, the source button is disabled in `overlay`, the opacity slider shows only in `overlay`. The opacity slider
+  previews on `input` and saves on `change` (chrome.storage.sync allows 120 writes a minute). Every control has an
+  `aria-label` and a `data-testid`.
+- **Video sizing:** in every layout the video fills the stage with `object-fit: contain`. In `below` the stage's aspect
+  ratio follows `videoWidth / videoHeight` (updated on `loadedmetadata` and `resize`, default 16:9), capped at 70% of the
+  window height, and the chat takes the rest. In `side` the chat column is `clamp(200px, 40%, 380px)`.
+- **Player-bar button:** 32 px round button with a 20 px icon and Twitch's hover colour, so it matches its neighbours.
+  Its `aria-label` and tooltip read "Picture-in-picture with chat (<hotkey>)" and follow hotkey changes live.
 - **Look:** dark, Twitch purple accent `#9146FF`, system font, 8 px radius, subtle blur behind the toolbar. Lite chat
   lines: coloured display name (from the `color` tag, readable on dark), Twitch emotes as images from
   `https://static-cdn.jtvnw.net/emoticons/v2/<id>/default/dark/1.0`, max 150 lines kept, auto-scroll that pauses
@@ -161,12 +172,20 @@ cannot be tested headless. Ship it behind the setting, mark it experimental in t
 
 - `bun run typecheck` and `bun test` (unit) must be clean. `bun run build` produces `dist/` loadable in Chrome.
 - Unit tests cover all of `src/domain`, using real IRC lines from `docs/spike.md`.
-- `bun run e2e` (fixture suite): Playwright headless Chromium with `dist/` loaded. `www.twitch.tv/<channel>` is routed
-  to a local fixture page that mirrors Twitch's DOM selectors and plays a short looping test video (generate it with
-  ffmpeg into `test/e2e/fixtures/`). IRC and the chat embed are mocked (route the WebSocket and the iframe URL).
-  Deterministic, offline, under 60 s.
-- `LIVE=1 bun run e2e` (live suite): real twitch.tv, a live channel picked at runtime (not a hardcoded name; offline
-  channels play a VOD preview), checks the real selectors still hold.
+- `bun run e2e` (fixture suite, about 30 s): Playwright headless Chromium (`channel: "chromium"`) with `dist/` loaded
+  (built in a global setup). A local HTTPS server (`test/e2e/support/mockIrc.ts`, a throwaway self-signed certificate
+  made with `openssl`) stands in for `www.twitch.tv` (fixture page mirroring the selectors in `TwitchPage.ts`, a hidden
+  duplicate control group, the chat embed page, the test videos with range support), `static-cdn.jtvnw.net` (emote
+  image) and `irc-ws.chat.twitch.tv` (a WebSocket IRC mock that answers the handshake and PING and can send PRIVMSG,
+  CLEARCHAT and CLEARMSG, or drop the socket). Chromium is pointed at it with `--host-resolver-rules` (every other host
+  is `~NOTFOUND`, so the suite is offline), `--ignore-certificate-errors`, and `--disable-features=LocalNetworkAccess...`
+  (otherwise Chromium blocks twitch.tv pages from reaching a loopback address).
+  Playwright's own interception does not work here: `context.routeWebSocket` only patches the main-world `WebSocket`, so
+  the content script's isolated-world socket is not intercepted, and `context.route` leaves subresource requests from the
+  Document PiP window hanging. Test videos come from `scripts/fixtures.ts` (ffmpeg, VP9 webm, 16:9 and 4:3).
+- `LIVE=1 bun run e2e` / `bun run e2e:live`: real twitch.tv smoke suite. It picks a live channel from the directory at
+  runtime and skips with a message if none is found.
+- CI (`.github/workflows/ci.yml`, push to main): install, typecheck, unit tests, build, Playwright Chromium, fixture e2e.
 - Interaction audit: every toolbar control is clicked in e2e and its effect asserted (not just rendered).
 - Things only a headed Chrome can show (real window chrome, the gesture requirement, auto PiP) go in
   `docs/manual-test.md` as a short checklist.
