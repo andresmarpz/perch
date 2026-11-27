@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { rm } from "node:fs/promises"
+import { readdir, rm } from "node:fs/promises"
 import { join, resolve } from "node:path"
 
 class PackageFailed extends Schema.TaggedError<PackageFailed>()("PackageFailed", {
@@ -20,6 +20,12 @@ const sh = async (cmd: string[], cwd: string) => {
 const program = Effect.gen(function*() {
   yield* step("build", () => sh(["bun", "scripts/build.ts"], root))
   const manifest = yield* step("manifest", () => Bun.file(join(root, "dist/manifest.json")).json() as Promise<{ version: string }>)
+  const files = yield* step("list", () => readdir(join(root, "dist"), { recursive: true }))
+  yield* step("strip", () => Promise.all(files.filter((f) => f.endsWith(".js")).map(async (f) => {
+    const path = join(root, "dist", f)
+    const text = await Bun.file(path).text()
+    await Bun.write(path, text.replace(/\n?\/\/# sourceMappingURL=.*\s*$/, "\n"))
+  })))
   const zip = join(root, `perch-${manifest.version}.zip`)
   yield* step("clean", () => rm(zip, { force: true }))
   yield* step("zip", () => sh(["zip", "-r", "-X", zip, ".", "-x", "*.map"], join(root, "dist")))
