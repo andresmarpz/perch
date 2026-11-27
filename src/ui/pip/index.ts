@@ -45,14 +45,21 @@ export const mountPipUi = (win: Window, options: PipUiOptions): PipUi => {
     { class: "chat", testid: "pip-chat" },
     h("div", { class: "lite" }, lite.element, lite.pill),
   )
-  const root = h("div", { class: "pip", testid: "pip-root" }, stage, chat)
-  const toolbar = mountToolbar(doc, options.video, {
+  const zone = h("div", { class: "zone" })
+  const root = h("div", { class: "pip", testid: "pip-root" }, stage, chat, zone)
+  const toolbar = mountToolbar(doc, options.video, { zone, activity: stage }, {
     patch: options.callbacks.patch,
     back: options.callbacks.back,
     previewOpacity: (value) => root.style.setProperty("--overlay-opacity", String(value)),
   })
-  root.append(toolbar.hotzone, toolbar.element)
   doc.body.replaceChildren(root)
+
+  const syncAspect = () => {
+    const { videoWidth, videoHeight } = options.video
+    if (videoWidth > 0 && videoHeight > 0) root.style.setProperty("--video-aspect", `${videoWidth} / ${videoHeight}`)
+  }
+  for (const type of ["loadedmetadata", "resize"]) options.video.addEventListener(type, syncAspect)
+  syncAspect()
 
   let embed: HTMLIFrameElement | undefined
 
@@ -92,6 +99,7 @@ export const mountPipUi = (win: Window, options: PipUiOptions): PipUi => {
     update,
     chat: lite.push,
     dispose: () => {
+      for (const type of ["loadedmetadata", "resize"]) options.video.removeEventListener(type, syncAspect)
       toolbar.dispose()
       lite.dispose()
       root.remove()

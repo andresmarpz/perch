@@ -6,7 +6,7 @@ import { LiteChat } from "../services/LiteChat.ts"
 import { PipSession, requestPipWindow } from "../services/PipSession.ts"
 import { SettingsStore } from "../services/SettingsStore.ts"
 import { SocketFactory } from "../services/SocketFactory.ts"
-import { TwitchPage } from "../services/TwitchPage.ts"
+import { TwitchPage, type ButtonHandle } from "../services/TwitchPage.ts"
 
 const isEditable = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false
@@ -85,6 +85,7 @@ const main = Effect.gen(function*() {
     Stream.runForEach((next) =>
       Effect.sync(() => {
         settings = next
+        button?.setHotkey(next.hotkey)
         syncAutoPip()
       })
     ),
@@ -93,9 +94,11 @@ const main = Effect.gen(function*() {
   yield* session.states.pipe(Stream.runForEach(() => Effect.sync(syncAutoPip)), Effect.forkScoped)
 
   let buttonScope: Scope.Closeable | undefined
+  let button: ButtonHandle | undefined
   const releaseButton = Effect.suspend(() => {
     const current = buttonScope
     buttonScope = undefined
+    button = undefined
     return current === undefined ? Effect.void : Scope.close(current, Exit.void)
   })
   yield* Effect.addFinalizer(() => releaseButton)
@@ -106,7 +109,7 @@ const main = Effect.gen(function*() {
         if (route._tag !== "Channel") return
         const next = yield* Scope.make()
         buttonScope = next
-        yield* page.injectButton(toggle).pipe(Scope.provide(next))
+        button = yield* page.injectButton(toggle, settings.hotkey).pipe(Scope.provide(next))
       })
     ),
     Effect.forkScoped,

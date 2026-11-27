@@ -12,6 +12,12 @@ export const selectors = {
 
 export const buttonTestId = "pip-open"
 
+export interface ButtonHandle {
+  readonly setHotkey: (hotkey: string) => void
+}
+
+const buttonLabel = (hotkey: string): string => `Picture-in-picture with chat (${hotkey})`
+
 const replaceDelayMs = 150
 
 export class TwitchPage extends Context.Service<TwitchPage, {
@@ -19,7 +25,7 @@ export class TwitchPage extends Context.Service<TwitchPage, {
   readonly findPlayerBar: Effect.Effect<Option.Option<HTMLElement>>
   readonly currentRoute: Effect.Effect<Route>
   readonly routeChanges: Stream.Stream<Route>
-  injectButton(onClick: () => void): Effect.Effect<void, never, Scope.Scope>
+  injectButton(onClick: () => void, hotkey: string): Effect.Effect<ButtonHandle, never, Scope.Scope>
 }>()("twitch-pip/services/TwitchPage") {
   static readonly layerWith = (win: Window) => Layer.succeed(TwitchPage, makePage(win))
 
@@ -35,27 +41,30 @@ const pipIcon =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M19 7h-8v6h8V7zm2-4H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H3V5h18v14z"/></svg>'
 
 const buttonStyle =
-  "display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:0;border-radius:4px;background:transparent;color:#efeff1;cursor:pointer"
+  "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:0;border-radius:9000px;background:transparent;color:#fff;cursor:pointer;transition:background-color 150ms ease"
 
-const createButton = (doc: Document, onClick: () => void): HTMLElement => {
+const createButton = (doc: Document, onClick: () => void, hotkey: string) => {
   const wrapper = doc.createElement("div")
   wrapper.dataset["twitchPip"] = "wrapper"
   wrapper.style.cssText = "display:inline-flex;align-items:center"
   const button = doc.createElement("button")
   button.type = "button"
   button.dataset["testid"] = buttonTestId
-  button.setAttribute("aria-label", "Picture in picture (Twitch PiP)")
-  button.title = "Picture in picture (Twitch PiP)"
+  const setHotkey = (value: string) => {
+    button.setAttribute("aria-label", buttonLabel(value))
+    button.title = buttonLabel(value)
+  }
+  setHotkey(hotkey)
   button.style.cssText = buttonStyle
   button.innerHTML = pipIcon
-  button.addEventListener("mouseenter", () => (button.style.background = "rgba(255,255,255,0.2)"))
+  button.addEventListener("mouseenter", () => (button.style.background = "rgba(255,255,255,0.13)"))
   button.addEventListener("mouseleave", () => (button.style.background = "transparent"))
   button.addEventListener("click", (event) => {
     event.stopPropagation()
     onClick()
   })
   wrapper.append(button)
-  return wrapper
+  return { wrapper, setHotkey }
 }
 
 const makePage = (win: Window) => {
@@ -98,10 +107,10 @@ const makePage = (win: Window) => {
     navigation === undefined || navigation === null ? polled : navigationEvents(navigation),
   ).pipe(Stream.changesWith(sameRoute))
 
-  const injectButton = (onClick: () => void) =>
+  const injectButton = (onClick: () => void, hotkey: string) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const wrapper = createButton(doc, onClick)
+        const { wrapper, setHotkey } = createButton(doc, onClick, hotkey)
         const place = () => {
           const bar = Option.getOrUndefined(queryPlayerBar())
           if (bar === undefined) {
@@ -123,7 +132,7 @@ const makePage = (win: Window) => {
         })
         observer.observe(doc.documentElement, { childList: true, subtree: true })
         place()
-        return { wrapper, observer, cancel: () => clearTimeout(timer) }
+        return { wrapper, observer, setHotkey, cancel: () => clearTimeout(timer) }
       }),
       ({ wrapper, observer, cancel }) =>
         Effect.sync(() => {
@@ -131,7 +140,7 @@ const makePage = (win: Window) => {
           cancel()
           wrapper.remove()
         }),
-    ).pipe(Effect.asVoid)
+    ).pipe(Effect.map(({ setHotkey }): ButtonHandle => ({ setHotkey })))
 
   return TwitchPage.of({ findVideo, findPlayerBar, currentRoute, routeChanges, injectButton })
 }
