@@ -13,3 +13,7 @@ export class PipOpenFailed extends Schema.TaggedError<PipOpenFailed>()("PipOpenF
 export class SettingsWriteFailed extends Schema.TaggedError<SettingsWriteFailed>()("SettingsWriteFailed", {
   cause: Schema.Defect(),
 }) {}
+
+export class SettingsReadFailed extends Schema.TaggedError<SettingsReadFailed>()("SettingsReadFailed", {
+  cause: Schema.Defect(),
+}) {}

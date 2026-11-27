@@ -192,12 +192,12 @@ export class PipSession extends Context.Service<PipSession, {
             { bufferSize: 4, strategy: "sliding" },
           )
           yield* resizes.pipe(
-            Stream.debounce("500 millis"),
+            Stream.groupByKey(({ layout: forLayout }) => forLayout),
+            Stream.flatMap(([, sizes]) => sizes.pipe(Stream.debounce("500 millis")), { concurrency: "unbounded" }),
             Stream.runForEach(({ layout: forLayout, size }) =>
-              Effect.gen(function*() {
-                const current = yield* store.get
-                yield* store.set({ windowSizes: { ...current.windowSizes, [forLayout]: size } })
-              }).pipe(Effect.ignore)
+              store.update((current) => ({ ...current, windowSizes: { ...current.windowSizes, [forLayout]: size } })).pipe(
+                Effect.ignore,
+              )
             ),
             Effect.forkScoped,
           )

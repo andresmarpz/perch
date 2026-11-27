@@ -1,12 +1,13 @@
-import { Context, Effect, Layer, Queue, Stream } from "effect"
+import { Context, Effect, Layer, Queue, Semaphore, Stream } from "effect"
 import { decodeSettings, defaults, type Settings } from "../domain/settings.ts"
-import { SettingsWriteFailed } from "./errors.ts"
+import { SettingsReadFailed, SettingsWriteFailed } from "./errors.ts"
 
 const storageKey = "settings"
 
 export class SettingsStore extends Context.Service<SettingsStore, {
   readonly get: Effect.Effect<Settings>
-  set(patch: Partial<Settings>): Effect.Effect<Settings, SettingsWriteFailed>
+  set(patch: Partial<Settings>): Effect.Effect<Settings, SettingsReadFailed | SettingsWriteFailed>
+  update(f: (settings: Settings) => Settings): Effect.Effect<Settings, SettingsReadFailed | SettingsWriteFailed>
   readonly changes: Stream.Stream<Settings>
 }>()("twitch-pip/services/SettingsStore") {
   static readonly layerWith = (area: chrome.storage.SyncStorageArea) =>
@@ -16,22 +17,30 @@ export class SettingsStore extends Context.Service<SettingsStore, {
 }
 
 const makeStore = (area: chrome.storage.SyncStorageArea) => {
-  const get = Effect.tryPromise({
+  const read = Effect.tryPromise({
     try: () => area.get(storageKey),
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.map((items) => decodeSettings(items[storageKey])),
-    Effect.catch((cause) => Effect.logWarning("settings read failed, using defaults", cause).pipe(Effect.as(defaults))),
+    catch: (cause) => new SettingsReadFailed({ cause }),
+  }).pipe(Effect.map((items) => decodeSettings(items[storageKey])))
+
+  const get = read.pipe(
+    Effect.catch((error) => Effect.logWarning("settings read failed, showing defaults", error).pipe(Effect.as(defaults))),
   )
 
-  const set = Effect.fn("SettingsStore.set")(function*(patch: Partial<Settings>) {
-    const next = decodeSettings({ ...(yield* get), ...patch })
-    yield* Effect.tryPromise({
-      try: () => area.set({ [storageKey]: next }),
-      catch: (cause) => new SettingsWriteFailed({ cause }),
-    })
-    return next
-  })
+  const lock = Semaphore.makeUnsafe(1)
+
+  const update = (f: (settings: Settings) => Settings) =>
+    lock.withPermits(1)(
+      Effect.gen(function*() {
+        const next = decodeSettings(f(yield* read))
+        yield* Effect.tryPromise({
+          try: () => area.set({ [storageKey]: next }),
+          catch: (cause) => new SettingsWriteFailed({ cause }),
+        })
+        return next
+      }),
+    )
+
+  const set = (patch: Partial<Settings>) => update((current) => ({ ...current, ...patch }))
 
   const changes = Stream.callback<Settings>(
     Effect.fn(function*(queue) {
@@ -47,5 +56,5 @@ const makeStore = (area: chrome.storage.SyncStorageArea) => {
     { bufferSize: 16, strategy: "sliding" },
   )
 
-  return SettingsStore.of({ get, set, changes })
+  return SettingsStore.of({ get, set, update, changes })
 }

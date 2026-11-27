@@ -1,4 +1,4 @@
-import { click, closed, defaultSizes, expect, test, tid } from "../support/fixtures.ts"
+import { click, closed, defaultSizes, expect, test, tid, type Harness } from "../support/fixtures.ts"
 
 test.describe("session lifecycle", () => {
   test("closing the PiP window restores the video to the tab and it plays", async ({ app }) => {
@@ -78,6 +78,19 @@ test.describe("session lifecycle", () => {
   })
 })
 
+const countStorageWrites = async (app: Harness) => {
+  await app.sw.evaluate(() => {
+    const g = globalThis as unknown as { __writes: number; __counting?: boolean }
+    g.__writes = 0
+    if (g.__counting === true) return
+    g.__counting = true
+    chrome.storage.onChanged.addListener(() => {
+      g.__writes += 1
+    })
+  })
+  return () => app.sw.evaluate(() => (globalThis as unknown as { __writes: number }).__writes)
+}
+
 test.describe("window size", () => {
   test("a resized window is saved for its layout", async ({ app }) => {
     const pip = await app.openPip(await app.openChannel(), defaultSizes.side)
@@ -94,5 +107,31 @@ test.describe("window size", () => {
     await pip.setViewportSize({ width: 400, height: 520 })
     await expect.poll(async () => ((await app.getSettings())["windowSizes"] ?? {})["below"]).toEqual({ width: 400, height: 520 })
     expect(((await app.getSettings())["windowSizes"] ?? {})["side"]).toEqual({ width: 640, height: 330 })
+  })
+
+  test("a burst of resizes is saved once", async ({ app }) => {
+    const pip = await app.openPip(await app.openChannel(), defaultSizes.side)
+    const writes = await countStorageWrites(app)
+    for (let i = 0; i < 12; i++) {
+      await pip.setViewportSize({ width: 600 + i * 6, height: 330 })
+      await pip.waitForTimeout(40)
+    }
+    await expect.poll(async () => ((await app.getSettings())["windowSizes"] ?? {})["side"]).toEqual({ width: 666, height: 330 })
+    await pip.waitForTimeout(700)
+    expect(await writes()).toBeLessThanOrEqual(2)
+  })
+
+  test("switching layout and resizing again within a moment keeps both layouts' sizes", async ({ app }) => {
+    const pip = await app.openPip(await app.openChannel(), defaultSizes.side)
+    const resized = pip.evaluate(() => new Promise<void>((resolve) => addEventListener("resize", () => resolve(), { once: true })))
+    await pip.setViewportSize({ width: 640, height: 330 })
+    await resized
+    await app.setSettings({ layout: "below" })
+    await expect(tid(pip, "pip-root")).toHaveAttribute("data-layout", "below")
+    await pip.setViewportSize({ width: 400, height: 520 })
+    await expect.poll(async () => (await app.getSettings())["windowSizes"], { timeout: 4000 }).toMatchObject({
+      side: { width: 640, height: 330 },
+      below: { width: 400, height: 520 },
+    })
   })
 })
