@@ -1,0 +1,22 @@
+{
+  "name": "twitch-pip",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "bun test src",
+    "e2e": "playwright test",
+    "check": "bun run typecheck && bun run test && bun run build"
+  },
+  "dependencies": {
+    "effect": "4.1.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/bun": "latest",
+    "@types/chrome": "latest",
+    "typescript": "7.0.2"
+  }
+}
