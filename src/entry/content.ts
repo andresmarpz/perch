@@ -55,11 +55,15 @@ const main = Effect.gen(function*() {
   yield* Effect.addFinalizer(() => Effect.sync(link.stop))
 
   const mediaSession = (navigator as unknown as { readonly mediaSession?: MediaSessionLike }).mediaSession
+  const autoOpen = () => {
+    console.info("twitch-pip: Chrome asked for automatic PiP")
+    toggle()
+  }
   const syncAutoPip = () => {
     if (mediaSession === undefined) return
     const wanted = settings.autoPip && session.stateUnsafe() === "idle"
     try {
-      mediaSession.setActionHandler("enterpictureinpicture", wanted ? toggle : null)
+      mediaSession.setActionHandler("enterpictureinpicture", wanted ? autoOpen : null)
     } catch {
       return
     }
