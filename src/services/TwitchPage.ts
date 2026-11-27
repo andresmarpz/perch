@@ -5,6 +5,7 @@ export const selectors = {
   player: '[data-a-target="video-player"]',
   videoRef: '[data-a-target="video-ref"]',
   video: '[data-a-target="video-ref"] video',
+  playerVideos: '[data-a-target="video-ref"] video, [data-a-target="video-player"] video',
   anyVideo: "video",
   rightControls: ".player-controls__right-control-group",
   fullscreenButton: '[data-a-target="player-fullscreen-button"]',
@@ -22,6 +23,8 @@ const replaceDelayMs = 150
 
 export class TwitchPage extends Context.Service<TwitchPage, {
   readonly findVideo: Effect.Effect<Option.Option<HTMLVideoElement>>
+  readonly videoUnsafe: () => HTMLVideoElement | null
+  watchForeignVideo(onForeign: () => void): Effect.Effect<void, never, Scope.Scope>
   readonly findPlayerBar: Effect.Effect<Option.Option<HTMLElement>>
   readonly currentRoute: Effect.Effect<Route>
   readonly routeChanges: Stream.Stream<Route>
@@ -70,10 +73,26 @@ const createButton = (doc: Document, onClick: () => void, hotkey: string) => {
 const makePage = (win: Window) => {
   const doc = win.document
 
-  const findVideo = Effect.sync(() => {
-    const inPlayer = doc.querySelector<HTMLVideoElement>(selectors.video)
-    return Option.fromNullOr(inPlayer ?? doc.querySelector<HTMLVideoElement>(selectors.anyVideo))
-  })
+  const videoUnsafe = () =>
+    doc.querySelector<HTMLVideoElement>(selectors.video) ?? doc.querySelector<HTMLVideoElement>(selectors.anyVideo)
+
+  const findVideo = Effect.sync(() => Option.fromNullOr(videoUnsafe()))
+
+  const watchForeignVideo = (onForeign: () => void) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const ref = doc.querySelector(selectors.videoRef)
+        const root = ref?.closest(selectors.player)?.parentElement ?? ref?.parentElement ?? doc.documentElement
+        const check = () => {
+          if (doc.querySelector(selectors.playerVideos) !== null) onForeign()
+        }
+        const observer = new MutationObserver(check)
+        observer.observe(root, { childList: true, subtree: true })
+        check()
+        return observer
+      }),
+      (observer) => Effect.sync(() => observer.disconnect()),
+    ).pipe(Effect.asVoid)
 
   const queryPlayerBar = (): Option.Option<HTMLElement> => {
     const groups = Array.from(doc.querySelectorAll<HTMLElement>(`${selectors.player} ${selectors.rightControls}`))
@@ -142,7 +161,7 @@ const makePage = (win: Window) => {
         }),
     ).pipe(Effect.map(({ setHotkey }): ButtonHandle => ({ setHotkey })))
 
-  return TwitchPage.of({ findVideo, findPlayerBar, currentRoute, routeChanges, injectButton })
+  return TwitchPage.of({ findVideo, videoUnsafe, watchForeignVideo, findPlayerBar, currentRoute, routeChanges, injectButton })
 }
 
 const directChild = (parent: HTMLElement, descendant: Element): Element | null => {

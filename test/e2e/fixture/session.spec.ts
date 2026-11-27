@@ -28,7 +28,6 @@ test.describe("session lifecycle", () => {
   test("a video paused in the PiP window stays paused after the window closes", async ({ app }) => {
     const page = await app.openChannel()
     const pip = await app.openPip(page)
-    await pip.waitForTimeout(700)
     await click(pip, "pip-play")
     await expect.poll(() => pip.evaluate(() => document.querySelector("video")!.paused)).toBe(true)
     await click(pip, "pip-back")
@@ -54,6 +53,7 @@ test.describe("session lifecycle", () => {
     await tid(page, "nav-directory").click()
     await page.evaluate(() => history.pushState({}, "", "/directory"))
     await gone
+    await page.waitForTimeout(600)
     await expect(tid(page, "pip-open")).toHaveCount(0)
   })
 
@@ -77,6 +77,12 @@ test.describe("session lifecycle", () => {
     await expect.poll(() => app.tabVideo(page).then((v) => v?.count)).toBe(1)
   })
 })
+
+declare global {
+  interface Window {
+    __resized?: Promise<void>
+  }
+}
 
 const countStorageWrites = async (app: Harness) => {
   await app.sw.evaluate(() => {
@@ -123,9 +129,11 @@ test.describe("window size", () => {
 
   test("switching layout and resizing again within a moment keeps both layouts' sizes", async ({ app }) => {
     const pip = await app.openPip(await app.openChannel(), defaultSizes.side)
-    const resized = pip.evaluate(() => new Promise<void>((resolve) => addEventListener("resize", () => resolve(), { once: true })))
+    await pip.evaluate(() => {
+      window.__resized = new Promise<void>((resolve) => addEventListener("resize", () => resolve(), { once: true }))
+    })
     await pip.setViewportSize({ width: 640, height: 330 })
-    await resized
+    await pip.evaluate(() => window.__resized)
     await app.setSettings({ layout: "below" })
     await expect(tid(pip, "pip-root")).toHaveAttribute("data-layout", "below")
     await pip.setViewportSize({ width: 400, height: 520 })

@@ -23,6 +23,7 @@
   .InjectLayout svg { width: 20px; height: 20px; }
   .hidden-controls { display: none; }
   [data-a-target="animated-channel-viewers-count"] { margin: 8px 0; }
+  .chat-box { border: 1px solid #555; padding: 6px; width: 300px; }
 </style>
 </head>
 <body>
@@ -62,15 +63,53 @@
       </div>
     </div>
     <div data-a-target="animated-channel-viewers-count">1,234</div>
+    <div class="chat-box" contenteditable="true" role="textbox" aria-label="Send a message" data-a-target="chat-input" data-testid="chat-input"><span>say something</span></div>
   </main>
 </div>
 <script>
-  document.querySelector("video").play().catch(() => undefined)
+  const videoSrc = "/__fixture/__VIDEO__"
+  if (location.pathname === "/noplayer") document.querySelector(".video-player").remove()
+  const video = document.querySelector("video")
+  if (video !== null) video.play().catch(() => undefined)
   document.querySelector('[data-testid="nav-other"]').addEventListener("click", (event) => {
     event.preventDefault()
     history.pushState({}, "", "/other")
     document.title = "other - Twitch"
   })
+  new MutationObserver((records) => {
+    if (!window.__pauseOnMove) return
+    for (const record of records) {
+      for (const node of [...record.addedNodes, ...record.removedNodes]) {
+        if (node === video) Promise.resolve().then(() => video.pause())
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true })
+  const ownVideo = () => {
+    const el = document.createElement("video")
+    el.src = videoSrc
+    el.loop = true
+    el.muted = true
+    el.dataset.twitchOwn = "1"
+    el.play().catch(() => undefined)
+    return el
+  }
+  const freshRef = () => {
+    const ref = document.querySelector('[data-a-target="video-ref"]')
+    const fresh = ref.cloneNode(false)
+    ref.replaceWith(fresh)
+    return fresh
+  }
+  window.__twitch = {
+    replacePlayer() {
+      freshRef().append(ownVideo())
+    },
+    replaceWithEmptyPlayer() {
+      freshRef()
+    },
+    mountVideo(delay = 0) {
+      setTimeout(() => document.querySelector('[data-a-target="video-ref"]').append(ownVideo()), delay)
+    },
+  }
 </script>
 </body>
 </html>

@@ -7,11 +7,8 @@ import { PipSession, requestPipWindow } from "../services/PipSession.ts"
 import { SettingsStore } from "../services/SettingsStore.ts"
 import { SocketFactory } from "../services/SocketFactory.ts"
 import { TwitchPage, type ButtonHandle } from "../services/TwitchPage.ts"
-
-const isEditable = (target: EventTarget | null): boolean => {
-  if (!(target instanceof HTMLElement)) return false
-  return target.isContentEditable || target.closest("input, textarea, select, [contenteditable]") !== null
-}
+import { isEditable } from "../ui/editable.ts"
+import { watchExtension } from "./extensionLink.ts"
 
 interface MediaSessionLike {
   setActionHandler(action: string, handler: (() => void) | null): void
@@ -21,30 +18,8 @@ const main = Effect.gen(function*() {
   const store = yield* SettingsStore
   const page = yield* TwitchPage
   const session = yield* PipSession
-  const services = yield* Effect.context<never>()
-  const runFork = Effect.runForkWith(services)
 
   let settings: Settings = yield* store.get
-
-  const toggle = () => {
-    switch (session.stateUnsafe()) {
-      case "opening":
-        return
-      case "open":
-        runFork(session.close)
-        return
-      case "idle": {
-        const route = parseRoute(window.location.href)
-        if (route._tag !== "Channel") return
-        const pending = requestPipWindow(settings.windowSizes[settings.layout])
-        runFork(
-          session.open(route.channel, pending).pipe(
-            Effect.catch((error) => Effect.logWarning("twitch-pip: could not open", error)),
-          ),
-        )
-      }
-    }
-  }
 
   const onKeydown = (event: KeyboardEvent) => {
     if (event.repeat || isEditable(event.target)) return
@@ -55,9 +30,36 @@ const main = Effect.gen(function*() {
     event.stopPropagation()
     toggle()
   }
+
+  const toggle = () => {
+    switch (session.stateUnsafe()) {
+      case "opening":
+        return
+      case "open":
+        run(session.close)
+        return
+      case "idle": {
+        const route = parseRoute(window.location.href)
+        if (route._tag !== "Channel") return
+        if (page.videoUnsafe() === null) return run(Effect.logWarning("twitch-pip: no player video on this page"))
+        const pending = requestPipWindow(settings.windowSizes[settings.layout])
+        run(
+          session.open(route.channel, pending, { settings, onKeydown }).pipe(
+            Effect.catch((error) => Effect.logWarning("twitch-pip: could not open", error)),
+          ),
+        )
+      }
+    }
+  }
+
   yield* Effect.acquireRelease(
     Effect.sync(() => window.addEventListener("keydown", onKeydown, true)),
     () => Effect.sync(() => window.removeEventListener("keydown", onKeydown, true)),
+  )
+
+  yield* Effect.acquireRelease(
+    Effect.sync(() => watchExtension(() => void runtime.dispose())),
+    (stop) => Effect.sync(stop),
   )
 
   const mediaSession = (navigator as unknown as { readonly mediaSession?: MediaSessionLike }).mediaSession
@@ -67,7 +69,7 @@ const main = Effect.gen(function*() {
     try {
       mediaSession.setActionHandler("enterpictureinpicture", wanted ? toggle : null)
     } catch {
-      // unsupported action in this browser
+      return
     }
   }
   yield* Effect.addFinalizer(() =>
@@ -75,7 +77,7 @@ const main = Effect.gen(function*() {
       try {
         mediaSession?.setActionHandler("enterpictureinpicture", null)
       } catch {
-        // unsupported action in this browser
+        return
       }
     })
   )
@@ -125,5 +127,13 @@ const appLayer = Layer.effectDiscard(main).pipe(Layer.provideMerge(sessionLayer)
 
 const runtime = ManagedRuntime.make(appLayer)
 
+function run(effect: Effect.Effect<unknown, unknown, Layer.Success<typeof appLayer>>) {
+  runtime.runFork(
+    effect.pipe(Effect.tapCause((cause) => Effect.logError("twitch-pip: task failed", cause)), Effect.ignore),
+  )
+}
+
 void runtime.runPromise(Effect.void)
-window.addEventListener("pagehide", () => void runtime.dispose())
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted) void runtime.dispose()
+})

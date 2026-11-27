@@ -6,17 +6,22 @@ import { mountOptions } from "../ui/options/index.ts"
 
 const runtime = ManagedRuntime.make(SettingsStore.layer)
 
+const run = <A, E>(effect: Effect.Effect<A, E, SettingsStore>) =>
+  runtime.runPromise(effect.pipe(Effect.tapCause((cause) => Effect.logError("twitch-pip options: task failed", cause))))
+
 const program = Effect.gen(function*() {
   const root = document.getElementById("root")
   if (root === null) return
   const store = yield* SettingsStore
   const view = mountOptions(root, yield* store.get, {
-    patch: (patch) => Effect.runPromise(store.set(patch)),
-    resetSizes: () => Effect.runPromise(store.set({ windowSizes: defaultWindowSizes })),
-    resetAll: () => Effect.runPromise(store.set(defaults)),
+    patch: (patch) => run(store.set(patch)),
+    resetSizes: () => run(store.set({ windowSizes: defaultWindowSizes })),
+    resetAll: () => run(store.set(defaults)),
   })
   yield* store.changes.pipe(Stream.runForEach((settings) => Effect.sync(() => view.update(settings))))
 })
 
 runtime.runFork(program)
-window.addEventListener("pagehide", () => void runtime.dispose())
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted) void runtime.dispose()
+})

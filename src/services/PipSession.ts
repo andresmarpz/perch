@@ -5,7 +5,8 @@ import { mountPipUi } from "../ui/pip/index.ts"
 import { PipOpenFailed, PipUnsupported, PlayerNotFound } from "./errors.ts"
 import { LiteChat } from "./LiteChat.ts"
 import { SettingsStore } from "./SettingsStore.ts"
-import { selectors, TwitchPage } from "./TwitchPage.ts"
+import { TwitchPage } from "./TwitchPage.ts"
+import { type Handoff, moveVideoIn } from "./videoHandoff.ts"
 
 export type SessionState = "idle" | "opening" | "open"
 
@@ -18,57 +19,24 @@ export const requestPipWindow = (size: WindowSize): Promise<Window> => {
   return api === undefined ? Promise.reject(new PipUnsupported()) : api.requestWindow(size)
 }
 
-interface VideoOrigin {
-  readonly parent: Element | null
-  readonly next: ChildNode | null
-}
-
-const replayDelays = [0, 120, 500] as const
-
-const keepPlaying = (video: HTMLVideoElement, shouldPlay: boolean) => {
-  if (!shouldPlay) return
-  for (const delay of replayDelays) {
-    setTimeout(() => {
-      if (video.paused) void video.play().catch(() => undefined)
-    }, delay)
-  }
-}
-
-const placeVideo = (video: HTMLVideoElement, origin: VideoOrigin) => {
-  const target = origin.parent?.isConnected === true ? origin.parent : document.querySelector(selectors.videoRef)
-  if (target === null) return video.remove()
-  const other = target.querySelector("video")
-  if (other !== null && other !== video) return video.remove()
-  const next = origin.next !== null && origin.next.parentNode === target ? origin.next : null
-  target.insertBefore(video, next)
-}
-
-const moveVideoIn = (video: HTMLVideoElement, stage: HTMLElement) => {
-  const origin: VideoOrigin = { parent: video.parentElement, next: video.nextSibling }
-  const wasPlaying = !video.paused
-  stage.append(video)
-  keepPlaying(video, wasPlaying)
-  let restored = false
-  return {
-    restore: () => {
-      if (restored) return
-      restored = true
-      const playing = !video.paused
-      placeVideo(video, origin)
-      keepPlaying(video, playing)
-    },
-  }
-}
-
 const outerSizeFor = (pip: Window, inner: WindowSize): WindowSize => ({
   width: inner.width + (pip.outerWidth - pip.innerWidth),
   height: inner.height + (pip.outerHeight - pip.innerHeight),
 })
 
+export interface SessionOptions {
+  readonly settings: Settings
+  readonly onKeydown: (event: KeyboardEvent) => void
+}
+
 export class PipSession extends Context.Service<PipSession, {
   readonly stateUnsafe: () => SessionState
   readonly states: Stream.Stream<SessionState>
-  open(channel: string, pending: Promise<Window>): Effect.Effect<void, PipUnsupported | PipOpenFailed | PlayerNotFound>
+  open(
+    channel: string,
+    pending: Promise<Window>,
+    options: SessionOptions,
+  ): Effect.Effect<void, PipUnsupported | PipOpenFailed | PlayerNotFound>
   readonly close: Effect.Effect<void>
 }>()("twitch-pip/services/PipSession") {
   static readonly layer = Layer.effect(
@@ -89,10 +57,9 @@ export class PipSession extends Context.Service<PipSession, {
           return SubscriptionRef.set(stateRef, next)
         })
 
-      const run = (effect: Effect.Effect<unknown, unknown>) => void Effect.runFork(Effect.ignore(effect))
-
-      const session = (channel: string, pending: Promise<Window>, ended: Latch.Latch) =>
+      const session = (channel: string, pending: Promise<Window>, options: SessionOptions, ended: Latch.Latch) =>
         Effect.gen(function*() {
+          const initial = options.settings
           const pip = yield* Effect.acquireRelease(
             Effect.tryPromise({
               try: () => pending,
@@ -100,14 +67,31 @@ export class PipSession extends Context.Service<PipSession, {
             }),
             (win) => Effect.sync(() => win.close()),
           )
+
+          let handoff: Handoff | undefined
+          yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              const onHide = () => {
+                handoff?.restore()
+                Latch.openUnsafe(ended)
+              }
+              pip.addEventListener("pagehide", onHide)
+              return onHide
+            }),
+            (onHide) => Effect.sync(() => pip.removeEventListener("pagehide", onHide)),
+          )
+          if (pip.closed) {
+            return yield* new PipOpenFailed({ cause: new Error("the PiP window closed before the session started") })
+          }
+
           const video = yield* page.findVideo.pipe(
             Effect.flatMap(Option.match({
               onNone: () => Effect.fail(new PlayerNotFound({ what: "video" })),
               onSome: Effect.succeed,
             })),
           )
-          const initial = yield* store.get
 
+          const patches = yield* Queue.unbounded<Partial<Settings>>()
           const ui = yield* Effect.acquireRelease(
             Effect.sync(() =>
               mountPipUi(pip, {
@@ -116,7 +100,7 @@ export class PipSession extends Context.Service<PipSession, {
                 video,
                 settings: initial,
                 callbacks: {
-                  patch: (patch) => run(store.set(patch)),
+                  patch: (patch) => void Queue.offerUnsafe(patches, patch),
                   back: () => void Latch.openUnsafe(ended),
                 },
               })
@@ -124,21 +108,23 @@ export class PipSession extends Context.Service<PipSession, {
             (ui) => Effect.sync(() => ui.dispose()),
           )
 
-          const mover = yield* Effect.acquireRelease(
+          handoff = yield* Effect.acquireRelease(
             Effect.sync(() => moveVideoIn(video, ui.stage)),
-            (m) => Effect.sync(m.restore),
+            (moved) => Effect.sync(moved.restore),
           )
 
           yield* Effect.acquireRelease(
-            Effect.sync(() => {
-              const onHide = () => {
-                mover.restore()
-                Latch.openUnsafe(ended)
-              }
-              pip.addEventListener("pagehide", onHide)
-              return onHide
-            }),
-            (onHide) => Effect.sync(() => pip.removeEventListener("pagehide", onHide)),
+            Effect.sync(() => pip.document.addEventListener("keydown", options.onKeydown, true)),
+            () => Effect.sync(() => pip.document.removeEventListener("keydown", options.onKeydown, true)),
+          )
+
+          yield* page.watchForeignVideo(() => Latch.openUnsafe(ended))
+
+          yield* Stream.fromQueue(patches).pipe(
+            Stream.runForEach((patch) =>
+              store.set(patch).pipe(Effect.catchCause((cause) => Effect.logError("twitch-pip: could not save settings", cause)))
+            ),
+            Effect.forkScoped,
           )
 
           let applied = initial
@@ -211,15 +197,8 @@ export class PipSession extends Context.Service<PipSession, {
           )
         })
 
-      const open = (channel: string, pending: Promise<Window>) =>
+      const open = (channel: string, pending: Promise<Window>, options: SessionOptions) =>
         Effect.gen(function*() {
-          if (live !== undefined) {
-            yield* Effect.tryPromise(() => pending).pipe(
-              Effect.flatMap((win) => Effect.sync(() => win.close())),
-              Effect.ignore,
-            )
-            return
-          }
           const scope = yield* Scope.make()
           const ended = yield* Latch.make(false)
           live = { scope, ended }
@@ -231,7 +210,7 @@ export class PipSession extends Context.Service<PipSession, {
               return setState("idle")
             }),
           )
-          const exit = yield* Effect.exit(session(channel, pending, ended).pipe(Scope.provide(scope)))
+          const exit = yield* Effect.exit(session(channel, pending, options, ended).pipe(Scope.provide(scope)))
           if (Exit.isFailure(exit)) {
             yield* Scope.close(scope, exit)
             return yield* Effect.failCause(exit.cause)
@@ -239,6 +218,7 @@ export class PipSession extends Context.Service<PipSession, {
           yield* setState("open")
           yield* Effect.gen(function*() {
             yield* ended.await
+            yield* Effect.yieldNow
             yield* Scope.close(scope, Exit.void)
           }).pipe(Effect.forkIn(rootScope))
         })
