@@ -1,7 +1,7 @@
-# twitch-pip: design
+# Perch: design
 
 A Chrome (MV3) extension that pops the Twitch stream you are watching into a Document Picture-in-Picture window, with
-chat beside it, under it, or over it. Personal project for Andres. Facts behind these choices: `docs/spike.md`.
+chat beside it, under it, or over it.
 
 ## Goals
 
@@ -18,8 +18,7 @@ Out of scope for v1: 7TV/BTTV/FFZ emotes in lite chat, VOD/clip pages, Firefox/S
 
 - TypeScript 7.0.2 (`tsc` is the Go compiler), `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`.
 - Effect 4.1.6 (`effect` package only; `Schema`, `Stream`, `Schedule`, `Scope`, `Layer`, `ManagedRuntime` are all in
-  `effect`). Reference source: `~/dev/effect-smol` (Effect 4 repo, see its `LLMS.md`, `MIGRATION.md`, `ai-docs/`). Do not
-  write Effect 3 APIs from memory; check effect-smol when unsure.
+  `effect`).  Effect 4 differs from Effect 3, so check the Effect 4 docs before using an API from memory.
 - Bun 1.3 for install, build (`Bun.build`), scripts and unit tests (`bun test`).
 - Playwright 1.65 bundled Chromium (new headless) for end-to-end tests. It decodes H.264 and loads unpacked extensions.
 - No UI framework. A tiny typed `h()` DOM helper and CSS strings. The PiP window is a separate document, so all styles are
@@ -57,10 +56,10 @@ src/entry/
   mainWorld.ts           MAIN-world content script (document_start): reads the attribute, runs the page/ code
   content.ts             Content script: build the runtime, wire button + hotkey to PipSession
   extensionLink.ts       Port to the service worker; tells the content script the extension went away
-  background.ts          Service worker: open options on install, accept the content script's port
+  background.ts          Service worker: open options on install, inject the scripts into open Twitch tabs on install/update,
+                         accept the content script's port
   options.ts             Options page entry
 test/e2e/                One Playwright smoke test against live twitch.tv
-spike/                   Feasibility spike scripts (reference only)
 ```
 
 ## How it works
@@ -252,9 +251,18 @@ cannot be tested headless. Ship it behind the setting, mark it experimental in t
 ## Testing
 
 - `bun run typecheck` and `bun test` (unit) must be clean. `bun run build` produces `dist/` loadable in Chrome.
-- Unit tests cover all of `src/domain`, using real IRC lines from `docs/spike.md`.
+- Unit tests cover all of `src/domain`, using real IRC lines.
 - `bun run e2e`: one headless Playwright smoke test with `dist/` loaded. It picks a live twitch.tv channel at runtime (skips
   if none) and checks the PiP button, the PiP video playing, lite chat lines and the back button.
 - CI (`.github/workflows/ci.yml`, push to main): install, typecheck, unit tests, build.
 - Things only a headed Chrome can show (real window chrome, the gesture requirement, auto PiP) go in
   `docs/manual-test.md` as a short checklist.
+
+## Stale tabs after an update
+
+When the extension reloads, Twitch tabs that were already open keep an orphaned content script. On install and update the
+service worker injects `mainWorld.js` (MAIN world) and `content.js` into every open Twitch tab. A new content script
+dispatches `twitch-pip:takeover` on `document` before it starts; every older instance listens for it and disposes its
+runtime, which closes any open session and removes its button. An instance whose `chrome.runtime.id` is gone disposes
+itself the next time the button, the hotkey or automatic PiP fires. The MAIN-world script guards itself with a flag on
+`window`, so a second injection does nothing.
