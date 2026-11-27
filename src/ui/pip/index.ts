@@ -1,4 +1,5 @@
 import type { ChatEvent } from "../../domain/chat.ts"
+import type { SevenTvEmotes } from "../../domain/sevenTv.ts"
 import { chatSourceFor } from "../../domain/layout.ts"
 import type { Settings } from "../../domain/settings.ts"
 import { makeH } from "../h.ts"
@@ -23,6 +24,7 @@ export interface PipUi {
   readonly stage: HTMLElement
   update(settings: Settings): void
   chat(event: ChatEvent): void
+  setEmotes(emotes: SevenTvEmotes): void
   dispose(): void
 }
 
@@ -89,6 +91,7 @@ export const mountPipUi = (win: Window, options: PipUiOptions): PipUi => {
     }
     applyEmbedScale(settings.chatFontSize)
     lite.setSticky(settings.layout === "overlay")
+    lite.setSevenTv(settings.sevenTv)
     toolbar.update(settings, source)
   }
 
@@ -98,6 +101,7 @@ export const mountPipUi = (win: Window, options: PipUiOptions): PipUi => {
     stage,
     update,
     chat: lite.push,
+    setEmotes: lite.setEmotes,
     dispose: () => {
       for (const type of ["loadedmetadata", "resize"]) options.video.removeEventListener(type, syncAspect)
       toolbar.dispose()

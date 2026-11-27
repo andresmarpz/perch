@@ -167,6 +167,12 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
     on: { change: () => save(() => callbacks.patch({ autoPip: autoPip.checked })) },
   })
 
+  const sevenTv = h("input", {
+    testid: "opt-seven-tv",
+    attrs: { type: "checkbox", role: "switch", "aria-label": "7TV emotes" },
+    on: { change: () => save(() => callbacks.patch({ sevenTv: sevenTv.checked })) },
+  })
+
   const confirmButton = (label: string, testid: string, action: () => Promise<unknown>, armedLabel: string) => {
     let armed: ReturnType<typeof setTimeout> | undefined
     const button = h("button", { class: "button danger", testid, attrs: { type: "button" }, props: { textContent: label } })
@@ -214,6 +220,11 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
     h(
       "section",
       { class: "card" },
+      row(
+        "7TV emotes",
+        "Show 7TV emotes in lite chat. Loads the channel's emote list and images from 7tv.io and cdn.7tv.app.",
+        h("label", { class: "switch" }, sevenTv, h("span", { class: "track" })),
+      ),
       row("Chat font size", "Applies to lite chat and scales the Twitch chat.", h("div", { class: "control" }, font, fontValue)),
       row("Overlay opacity", "Background of the chat over the video.", h("div", { class: "control" }, opacity, opacityValue)),
     ),
@@ -254,6 +265,7 @@ export const mountOptions = (root: HTMLElement, initial: Settings, callbacks: Op
     opacity.value = String(settings.overlayOpacity)
     opacityValue.textContent = `${Math.round(settings.overlayOpacity * 100)}%`
     autoPip.checked = settings.autoPip
+    sevenTv.checked = settings.sevenTv
     quality.value = settings.pipQuality
     if (!recording) showHotkey()
   }

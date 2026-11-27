@@ -3,6 +3,7 @@ import { parseRoute } from "../domain/channel.ts"
 import { matches, parseHotkey } from "../domain/hotkey.ts"
 import { type Settings } from "../domain/settings.ts"
 import { LiteChat } from "../services/LiteChat.ts"
+import { SevenTv } from "../services/SevenTv.ts"
 import { PipSession, requestPipWindow } from "../services/PipSession.ts"
 import { SettingsStore } from "../services/SettingsStore.ts"
 import { SocketFactory } from "../services/SocketFactory.ts"
@@ -135,7 +136,7 @@ const main = Effect.gen(function*() {
   Effect.catchCause((cause) => Effect.logError("twitch-pip: content script failed", Cause.pretty(cause))),
 )
 
-const base = Layer.mergeAll(SettingsStore.layer, TwitchPage.layer, SocketFactory.browser)
+const base = Layer.mergeAll(SettingsStore.layer, TwitchPage.layer, SocketFactory.browser, SevenTv.layer)
 const services = LiteChat.layer.pipe(Layer.provideMerge(base))
 const sessionLayer = PipSession.layer.pipe(Layer.provideMerge(services))
 const appLayer = Layer.effectDiscard(main).pipe(Layer.provideMerge(sessionLayer))

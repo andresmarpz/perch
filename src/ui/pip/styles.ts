@@ -33,6 +33,9 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 .line .sep { color: var(--text); }
 .line.action .text { font-style: italic; }
 .line img.emote { height: 1.7em; width: auto; vertical-align: middle; margin: -0.3em 1px; }
+.line .stack { display: inline-grid; vertical-align: middle; }
+.line .stack > * { grid-area: 1 / 1; place-self: center; }
+.line .stack img.emote { margin: -0.3em 1px; }
 .pill { position: absolute; left: 50%; bottom: 10px; transform: translate(-50%, 6px); border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: 600 12px var(--font); padding: 6px 12px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 150ms ease, transform 150ms ease; box-shadow: 0 4px 14px rgba(0,0,0,0.45); }
 .pill.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 .pill:hover { background: #a36bff; }

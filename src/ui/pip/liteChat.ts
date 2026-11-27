@@ -1,5 +1,6 @@
-import type { ChatEvent, ChatMessage, ChatStatus } from "../../domain/chat.ts"
-import { readableColor } from "../../domain/chat.ts"
+import type { ChatEvent, ChatMessage, ChatStatus, Segment } from "../../domain/chat.ts"
+import { readableColor, withSevenTv } from "../../domain/chat.ts"
+import { noEmotes, type SevenTvEmote, type SevenTvEmotes } from "../../domain/sevenTv.ts"
 import { applyChatEvent, isNearBottom, removedIds } from "../../domain/chatLog.ts"
 import { makeH } from "../h.ts"
 
@@ -18,6 +19,8 @@ export interface LiteChatView {
   readonly pill: HTMLElement
   push(event: ChatEvent): void
   setSticky(forced: boolean): void
+  setEmotes(emotes: SevenTvEmotes): void
+  setSevenTv(enabled: boolean): void
   dispose(): void
 }
 
@@ -41,6 +44,8 @@ export const mountLiteChat = (doc: Document): LiteChatView => {
   let log: ReadonlyArray<ChatMessage> = []
   let stick = true
   let forced = false
+  let emotes: SevenTvEmotes = noEmotes
+  let sevenTvOn = true
 
   const scrollToEnd = () => {
     list.scrollTop = list.scrollHeight
@@ -48,16 +53,38 @@ export const mountLiteChat = (doc: Document): LiteChatView => {
 
   const showPill = (show: boolean) => pill.classList.toggle("show", show && !forced)
 
-  const renderLine = (message: ChatMessage): HTMLElement => {
-    const children: Array<Node> = message.segments.map((segment) =>
-      segment.kind === "text"
-        ? doc.createTextNode(segment.text)
-        : h("img", {
+  const sevenTvImage = (name: string, emote: SevenTvEmote, className: string) =>
+    h("img", {
+      class: className,
+      attrs: { alt: name, title: name, loading: "lazy", width: String(emote.width), height: String(emote.height) },
+      props: { src: emote.url },
+    })
+
+  const renderSegment = (segment: Segment): Node => {
+    switch (segment.kind) {
+      case "text":
+        return doc.createTextNode(segment.text)
+      case "emote":
+        return h("img", {
           class: "emote",
           attrs: { alt: segment.name, title: segment.name, loading: "lazy", srcset: `${emoteUrl(segment.id, "2.0")} 2x` },
           props: { src: emoteUrl(segment.id, "1.0") },
         })
-    )
+      case "sevenTv":
+        return sevenTvImage(segment.name, segment.emote, "emote seventv")
+      case "stack":
+        return h(
+          "span",
+          { class: "stack" },
+          renderSegment(segment.base),
+          ...segment.overlays.map((overlay) => sevenTvImage(overlay.name, overlay.emote, "emote seventv overlay")),
+        )
+    }
+  }
+
+  const renderLine = (message: ChatMessage): HTMLElement => {
+    const segments = sevenTvOn ? withSevenTv(message.segments, emotes) : message.segments
+    const children = segments.map(renderSegment)
     const name = h("span", {
       class: "name",
       props: { textContent: message.displayName },
@@ -83,6 +110,17 @@ export const mountLiteChat = (doc: Document): LiteChatView => {
   }
   list.addEventListener("scroll", onScroll, { passive: true })
   pill.addEventListener("click", onPill)
+
+  const rerender = () => {
+    for (const message of log) {
+      const old = elements.get(message.id)
+      if (old === undefined) continue
+      const next = renderLine(message)
+      old.replaceWith(next)
+      elements.set(message.id, next)
+    }
+    if (stick || forced) scrollToEnd()
+  }
 
   const push = (event: ChatEvent) => {
     if (event._tag === "Status") {
@@ -118,6 +156,15 @@ export const mountLiteChat = (doc: Document): LiteChatView => {
         showPill(false)
         scrollToEnd()
       }
+    },
+    setEmotes: (next) => {
+      emotes = next
+      if (sevenTvOn) rerender()
+    },
+    setSevenTv: (enabled) => {
+      if (enabled === sevenTvOn) return
+      sevenTvOn = enabled
+      rerender()
     },
     dispose: () => {
       list.removeEventListener("scroll", onScroll)

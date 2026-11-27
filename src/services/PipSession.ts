@@ -1,9 +1,11 @@
 import { Context, Effect, Exit, Fiber, Latch, Layer, Option, Queue, Scope, Stream, SubscriptionRef } from "effect"
+import type { ChatEvent } from "../domain/chat.ts"
 import { chatSourceFor, type Layout, type WindowSize } from "../domain/layout.ts"
 import type { Settings } from "../domain/settings.ts"
 import { mountPipUi } from "../ui/pip/index.ts"
 import { PipOpenFailed, PipUnsupported, PlayerNotFound } from "./errors.ts"
 import { LiteChat } from "./LiteChat.ts"
+import { SevenTv } from "./SevenTv.ts"
 import { setPageBoost } from "./pageBridge.ts"
 import { SettingsStore } from "./SettingsStore.ts"
 import { TwitchPage } from "./TwitchPage.ts"
@@ -56,6 +58,7 @@ export class PipSession extends Context.Service<PipSession, {
       const store = yield* SettingsStore
       const page = yield* TwitchPage
       const liteChat = yield* LiteChat
+      const sevenTv = yield* SevenTv
       const rootScope = yield* Effect.scope
       const stateRef = yield* SubscriptionRef.make<SessionState>("idle")
 
@@ -153,13 +156,37 @@ export class PipSession extends Context.Service<PipSession, {
           let applied = initial
           let layout: Layout = initial.layout
 
+          let roomId: string | undefined
+          let emotesRequested = false
+          const syncEmotes = (settings: Settings) =>
+            Effect.gen(function*() {
+              if (!settings.sevenTv || roomId === undefined || emotesRequested) return
+              emotesRequested = true
+              const channelId = roomId
+              yield* sevenTv.emotes(channelId).pipe(
+                Effect.flatMap((emotes) => Effect.sync(() => ui.setEmotes(emotes))),
+                Effect.forkScoped,
+              )
+            })
+          const onChatEvent = (event: ChatEvent) =>
+            Effect.gen(function*() {
+              if (event._tag === "Room") {
+                if (roomId === undefined) {
+                  roomId = event.channelId
+                  yield* syncEmotes(applied)
+                }
+                return
+              }
+              ui.chat(event)
+            })
+
           let chatFiber: Fiber.Fiber<void> | undefined
           const syncChat = (settings: Settings) =>
             Effect.gen(function*() {
               const wantLite = chatSourceFor(settings.layout, settings.chatSource) === "lite"
               if (wantLite && chatFiber === undefined) {
                 chatFiber = yield* liteChat.messages(channel).pipe(
-                  Stream.runForEach((event) => Effect.sync(() => ui.chat(event))),
+                  Stream.runForEach(onChatEvent),
                   Effect.forkScoped,
                 )
               } else if (!wantLite && chatFiber !== undefined) {
@@ -179,6 +206,7 @@ export class PipSession extends Context.Service<PipSession, {
                 layout = next.layout
                 ui.update(next)
                 yield* syncChat(next)
+                yield* syncEmotes(next)
                 if (layoutChanged) {
                   yield* Effect.try(() => {
                     const size = outerSizeFor(pip, next.windowSizes[next.layout])
