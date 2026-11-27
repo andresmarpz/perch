@@ -1,6 +1,9 @@
 {
-  "name": "twitch-pip",
-  "version": "0.1.0",
+  "name": "perch",
+  "version": "1.0.0",
+  "description": "Perch: Twitch streams in a floating picture-in-picture window, with chat.",
+  "license": "MIT",
+  "repository": "github:andresmarpz/perch",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +11,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "bun test src",
     "e2e": "bun run build && playwright test",
-    "check": "bun run typecheck && bun run test && bun run build"
+    "check": "bun run typecheck && bun run test && bun run build",
+    "package": "bun scripts/package.ts"
   },
   "dependencies": {
     "effect": "4.1.6"
