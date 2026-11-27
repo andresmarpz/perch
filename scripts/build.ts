@@ -57,6 +57,7 @@ const program = Effect.gen(function*() {
   yield* Effect.all(
     [
       bundle("content.ts", "iife"),
+      bundle("mainWorld.ts", "iife"),
       bundle("background.ts", "esm"),
       bundle("options.ts", "esm"),
       step("manifest", () => cp(join(root, "manifest.json"), join(dist, "manifest.json"))),

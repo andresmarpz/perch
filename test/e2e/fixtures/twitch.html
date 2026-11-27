@@ -100,6 +100,32 @@
     ref.replaceWith(fresh)
     return fresh
   }
+  window.__visibilityEvents = 0
+  document.addEventListener("visibilitychange", () => window.__visibilityEvents++)
+  const fakeQualities = [
+    { name: "160p", group: "160p30", height: 160, framerate: 30 },
+    { name: "480p", group: "480p30", height: 480, framerate: 30 },
+    { name: "720p60", group: "720p60", height: 720, framerate: 60 },
+    { name: "1080p60 (Source)", group: "chunked", height: 1080, framerate: 60 },
+  ]
+  const fake = { quality: fakeQualities[1], auto: true, calls: [] }
+  window.__fakePlayer = fake
+  const fakeInstance = {
+    getQualities: () => fakeQualities,
+    getQuality: () => fake.quality,
+    setQuality(quality) {
+      fake.quality = quality
+      fake.calls.push(["setQuality", quality.group])
+      localStorage.setItem("video-quality", JSON.stringify({ default: quality.group }))
+    },
+    isAutoQualityMode: () => fake.auto,
+    setAutoQualityMode(auto) {
+      fake.auto = auto
+      fake.calls.push(["setAutoQualityMode", auto])
+    },
+  }
+  const playerElement = document.querySelector(".video-player")
+  if (playerElement !== null) playerElement["__reactFiber$fixture"] = { return: { memoizedProps: { mediaPlayerInstance: fakeInstance }, return: null } }
   window.__twitch = {
     replacePlayer() {
       freshRef().append(ownVideo())

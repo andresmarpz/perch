@@ -11,6 +11,8 @@ declare global {
       rerenderPlayer(): void
       addSecondPlayer(): void
     }
+    __fakePlayer: { quality: { group: string }; auto: boolean; calls: Array<[string, string | boolean]> }
+    __visibilityEvents: number
     __pauseOnMove?: boolean
     __uiRemoved?: boolean
     __maxVideos?: number
@@ -184,3 +186,34 @@ export const countRequestWindow = async (app: Harness, page: Page, delayMs: numb
   })()`)
   return async () => (await evaluate("window.__requests")) as number
 }
+
+export const hideTab = (page: Page, hidden: boolean) =>
+  page.evaluate((hide) => {
+    const state = hide ? "hidden" : "visible"
+    for (const key of ["visibilityState", "webkitVisibilityState"]) {
+      Object.defineProperty(Document.prototype, key, { configurable: true, get: () => state })
+    }
+    for (const key of ["hidden", "webkitHidden"]) {
+      Object.defineProperty(Document.prototype, key, { configurable: true, get: () => hide })
+    }
+    document.dispatchEvent(new Event("visibilitychange", { bubbles: true }))
+  }, hidden)
+
+export const pageSees = (page: Page) =>
+  page.evaluate(() => ({
+    state: document.visibilityState,
+    hidden: document.hidden,
+    webkitHidden: (document as unknown as { webkitHidden: boolean }).webkitHidden,
+    events: window.__visibilityEvents,
+  }))
+
+export const fakePlayer = (page: Page) =>
+  page.evaluate(() => ({
+    group: window.__fakePlayer.quality.group,
+    auto: window.__fakePlayer.auto,
+    calls: window.__fakePlayer.calls,
+    stored: localStorage.getItem("video-quality"),
+  }))
+
+export const boostAttribute = (page: Page) =>
+  page.evaluate(() => document.documentElement.hasAttribute("data-twitch-pip-active"))

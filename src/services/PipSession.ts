@@ -4,6 +4,7 @@ import type { Settings } from "../domain/settings.ts"
 import { mountPipUi } from "../ui/pip/index.ts"
 import { PipOpenFailed, PipUnsupported, PlayerNotFound } from "./errors.ts"
 import { LiteChat } from "./LiteChat.ts"
+import { setPageBoost } from "./pageBridge.ts"
 import { SettingsStore } from "./SettingsStore.ts"
 import { TwitchPage } from "./TwitchPage.ts"
 import { type Handoff, moveVideoIn, playerOf } from "./videoHandoff.ts"
@@ -127,6 +128,11 @@ export class PipSession extends Context.Service<PipSession, {
             (ui) => Effect.sync(() => ui.dispose()),
           )
 
+          yield* Effect.acquireRelease(
+            Effect.sync(() => setPageBoost(initial.pipQuality === "max")),
+            () => Effect.sync(() => setPageBoost(false)),
+          )
+
           handoff = yield* Effect.acquireRelease(
             Effect.sync(() => moveVideoIn(video, ui.stage)),
             (moved) => Effect.sync(moved.restore),
@@ -165,6 +171,7 @@ export class PipSession extends Context.Service<PipSession, {
             Stream.runForEach((next) =>
               Effect.gen(function*() {
                 const layoutChanged = next.layout !== applied.layout
+                if (next.pipQuality !== applied.pipQuality) setPageBoost(next.pipQuality === "max")
                 applied = next
                 layout = next.layout
                 ui.update(next)
