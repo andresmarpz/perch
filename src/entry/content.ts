@@ -1,10 +1,12 @@
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Scope, Stream } from "effect"
 import { parseRoute } from "../domain/channel.ts"
 import { matches, parseHotkey } from "../domain/hotkey.ts"
+import { sizeToRequest } from "../domain/pipSize.ts"
 import { type Settings } from "../domain/settings.ts"
 import { LiteChat } from "../services/LiteChat.ts"
 import { SevenTv } from "../services/SevenTv.ts"
 import { PipSession, requestPipWindow } from "../services/PipSession.ts"
+import { markOpened, startOpenedFlag } from "../services/openedFlag.ts"
 import { SettingsStore } from "../services/SettingsStore.ts"
 import { SocketFactory } from "../services/SocketFactory.ts"
 import { TwitchPage, type ButtonHandle } from "../services/TwitchPage.ts"
@@ -23,6 +25,10 @@ const main = Effect.gen(function*() {
   const session = yield* PipSession
 
   let settings: Settings = yield* store.get
+
+  let openedBefore = false
+  const stopOpenedFlag = startOpenedFlag((opened) => void (openedBefore = opened))
+  yield* Effect.addFinalizer(() => Effect.sync(stopOpenedFlag))
 
   const onKeydown = (event: KeyboardEvent) => {
     if (!extensionAlive()) return void runtime.dispose()
@@ -43,7 +49,8 @@ const main = Effect.gen(function*() {
     const route = parseRoute(window.location.href)
     if (route._tag !== "Channel") return
     if (page.videoUnsafe() === null) return run(Effect.logWarning("twitch-pip: no player video on this page"))
-    const pending = requestPipWindow(settings.windowSizes[settings.layout])
+    const pending = requestPipWindow(sizeToRequest(openedBefore, settings.windowSizes[settings.layout]))
+    void pending.then(() => markOpened()).then((marked) => void (openedBefore ||= marked), () => undefined)
     run(
       session.open(route.channel, pending, { settings, onKeydown }).pipe(
         Effect.catch((error) => Effect.logWarning("twitch-pip: could not open", error)),

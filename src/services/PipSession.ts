@@ -17,7 +17,7 @@ interface DocumentPipApi {
   requestWindow(options?: { readonly width: number; readonly height: number }): Promise<Window>
 }
 
-export const requestPipWindow = (size: WindowSize): Promise<Window> => {
+export const requestPipWindow = (size: WindowSize | undefined): Promise<Window> => {
   const api = (window as unknown as { readonly documentPictureInPicture?: DocumentPipApi }).documentPictureInPicture
   return api === undefined ? Promise.reject(new PipUnsupported()) : api.requestWindow(size)
 }

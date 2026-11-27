@@ -1,6 +1,6 @@
 {
   "name": "perch",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Perch: Twitch streams in a floating picture-in-picture window, with chat.",
   "license": "MIT",
   "repository": "github:andresmarpz/perch",

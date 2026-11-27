@@ -14,7 +14,13 @@ const injectIntoOpenTabs = async () => {
   }))
 }
 
+const shareSessionStorage = () =>
+  void chrome.storage.session?.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" }).catch(() => undefined)
+
+shareSessionStorage()
+
 chrome.runtime.onInstalled.addListener(({ reason }) => {
+  shareSessionStorage()
   if (reason === chrome.runtime.OnInstalledReason.INSTALL) void chrome.runtime.openOptionsPage()
   void injectIntoOpenTabs()
 })

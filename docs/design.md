@@ -87,6 +87,8 @@ calls `requestPipWindow(size)` there (no Effect hop first) and hands the resulti
 reading `chrome.storage` is async. `PipSession.stateUnsafe()` (`idle | opening | open`) is the sync toggle check: `open`
 closes the session, `opening` is ignored.
 
+Chrome restores a PiP window's last position only when the new request has the same size or none, and Perch's saved size changes on every resize. So the first `requestWindow` of a browser session passes the saved size and later ones pass none; the flag lives in `chrome.storage.session` (the service worker opens it to content scripts), mirrored in memory, and without it the size is always passed.
+
 ### The session (PipSession)
 
 One `Effect.scoped` program per session:
