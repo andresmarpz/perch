@@ -13,12 +13,12 @@ Pop any Twitch stream into a floating picture-in-picture window with chat, lite 
 Perch pops the Twitch stream you are watching into an always-on-top picture-in-picture window, with chat where you want it.
 
 - Four layouts: video only, chat beside, chat below, and lite chat over the video.
-- Lite chat: a light, read-only chat drawn by Perch, with Twitch emotes. No login needed.
+- Lite chat: a light, read-only chat drawn by Perch, with Twitch and 7TV emotes (optional). No login needed.
 - Quality lock: keeps the stream at Source while you work in other tabs or apps.
 - Automatic picture-in-picture when you switch tabs (experimental).
 - One click on the player bar button, or Alt+Shift+P. The stream keeps playing, and closing the window puts the video back in the tab.
 
-Perch collects nothing and sends nothing anywhere. Settings stay in your browser. It talks only to Twitch.
+Perch collects nothing and sends no data about you. Settings stay in your browser. It talks to Twitch and, if you keep 7TV emotes on, to 7tv.io for emote lists and images.
 
 Source and privacy policy: https://github.com/andresmarpz/perch
 
@@ -37,8 +37,12 @@ Show the Twitch stream you are watching in a floating picture-in-picture window,
   own visibility state and player settings. The script runs in the page's world, only while a Perch window is open, to
   keep the page looking visible and to keep the player on Source quality, and undoes both when the window closes. It
   reads and writes only the page's own player and visibility state, and sends no data anywhere.
+- No extra host permission for 7TV: Perch asks for no access to `7tv.io` or `cdn.7tv.app`. Lite chat fetches the public
+  emote lists from `https://7tv.io` and shows images from `https://cdn.7tv.app`. Both are public and need no
+  credentials, and 7TV allows cross-origin reads, so the extension adds nothing to its host permissions. The "7TV
+  emotes" option turns these requests off.
 - Remote connections: the extension itself connects to `wss://irc-ws.chat.twitch.tv` (anonymous read-only chat for lite
-  chat) and loads emotes from Twitch's emote CDN. The Twitch chat layout embeds Twitch's official chat page.
+  chat) and loads emotes from Twitch's emote CDN, and (optional, 7TV emotes setting) loads emote lists from `https://7tv.io` and images from `https://cdn.7tv.app`. The Twitch chat layout embeds Twitch's official chat page.
 
 ## Privacy policy URL
 

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Perch — picture-in-picture for Twitch",
   "short_name": "Perch",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Pop the Twitch stream you are watching into an always-on-top Picture-in-Picture window with chat.",
   "icons": {
     "16": "icons/icon16.png",

@@ -7,7 +7,7 @@ Twitch streams in a floating picture-in-picture window, with chat.
 ## Features
 
 - Four layouts: video only, chat beside, chat below, and lite chat over the video.
-- Lite chat: a light, read-only chat list drawn by Perch, with Twitch emotes, no login needed.
+- Lite chat: a light, read-only chat list drawn by Perch, with Twitch and 7TV emotes, no login needed.
 - Quality lock: keeps the stream at Source while you are in other tabs or apps.
 - Automatic PiP when you switch tabs (experimental).
 - One click or `Alt+Shift+P`. The stream never restarts, and closing the window puts the video back in the tab.
@@ -28,17 +28,17 @@ Chrome 116 or newer is required for Document Picture-in-Picture.
 - The toolbar at the top of the window switches layout, controls playback and volume, and has a back-to-tab button.
 - Chat source: the official Twitch chat (you can type when logged in) or lite chat. The overlay layout always uses lite
   chat.
-- Options (`chrome://extensions`, Details, Extension options): default layout and chat source, text size, overlay
+- Options (`chrome://extensions`, Details, Extension options): default layout and chat source, text size, 7TV emotes, overlay
   opacity, shortcut, quality and automatic PiP.
 
 ![Overlay layout with lite chat](docs/img/overlay.png)
 
-Lite chat has no 7TV, BTTV or FFZ emotes and cannot send messages. Automatic PiP needs Chrome's per-site permission
+Lite chat has no BTTV or FFZ emotes and cannot send messages. 7TV emotes can be turned off in the options. Automatic PiP needs Chrome's per-site permission
 for twitch.tv.
 
 ## Privacy
 
-Perch collects nothing and sends nothing anywhere. See [PRIVACY.md](PRIVACY.md).
+Perch collects nothing and sends no data about you. Lite chat loads 7TV emote lists and images from 7tv.io, which you can turn off. See [PRIVACY.md](PRIVACY.md).
 
 ## Development
 

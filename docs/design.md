@@ -12,7 +12,7 @@ chat beside it, under it, or over it.
 - Settings persist (chrome.storage.sync), including the PiP window size per layout.
 - Works logged out and logged in. No Twitch API keys, no servers, no tracking.
 
-Out of scope for v1: 7TV/BTTV/FFZ emotes in lite chat, VOD/clip pages, Firefox/Safari, sending chat from lite chat.
+Out of scope: BTTV/FFZ emotes in lite chat, VOD/clip pages, Firefox/Safari, sending chat from lite chat.
 
 ## Stack
 
@@ -32,7 +32,8 @@ scripts/build.ts         Effect program: Bun.build the entries, copy manifest/ic
 src/domain/              Pure logic, no DOM, no chrome.*. Fully unit tested.
   channel.ts             Parse a twitch.tv URL into a live-channel route or not
   irc.ts                 Parse IRC lines (tags, prefix, command, params); split multi-line frames
-  chat.ts                ChatMessage model; PRIVMSG -> ChatMessage; emote ranges -> text/emote segments
+  chat.ts                ChatMessage model; PRIVMSG -> ChatMessage; emote ranges -> text/emote segments; 7TV segments
+  sevenTv.ts             Tolerant decode of 7TV emote sets into a name -> emote map, CDN urls, channel-over-global merge
   quality.ts             Pick the highest Twitch quality (Source first, then height, frame rate, bitrate)
   bridge.ts              The attribute the content script sets on <html> while a session boosts the page
   settings.ts            Settings Schema, defaults, decode with fallback for missing/corrupt fields
@@ -44,6 +45,7 @@ src/services/            Effect services (Context.Service + Layer). Thin wrapper
   TwitchPage.ts          Find video, player bar, channel; inject the button; Stream of route changes
   LiteChat.ts            Stream<ChatEvent> (messages, clears, connection status) from an anonymous IRC WebSocket,
                          keepalive, reconnect with backoff
+  SevenTv.ts             Fetch the 7TV global set and the channel set once per channel per session, cached, with a timeout
   PipSession.ts          Scoped PiP session: open window, move video in, render UI, restore on release
                          (also exports `requestPipWindow`, the sync call the click handler makes)
   videoHandoff.ts        Move the <video> into the PiP stage and back; replay timers; drop ours if Twitch mounted its own
@@ -143,6 +145,30 @@ hidden. So the background-tab downgrade is the real cause; the player-size cap w
 
 `pipQuality: "twitch"` sets no attribute, so none of this runs. Changing the setting during a session applies at once.
 If the extension is reloaded mid-session the content script's teardown still removes the attribute.
+
+### 7TV emotes (lite chat only)
+
+- **API:** 7TV v3 REST, no auth: `https://7tv.io/v3/emote-sets/global` and `https://7tv.io/v3/users/twitch/<twitch id>`
+  (the user response embeds the channel's active emote set). Checked live: both answer without a key and with
+  an `access-control-allow-origin` that echoes the request origin. v4 is GraphQL only (`/v4/gql`) and has no simpler way to read the same data, so v3 is
+  used. Images come from `https://cdn.7tv.app/emote/<id>/2x.webp`.
+- **Channel id:** the `room-id` tag of the IRC `ROOMSTATE` that lite chat receives after joining (event `Room`). The
+  session starts the fetch on the first `Room` event, and only while the `sevenTv` setting is on (also when it is turned
+  on later).
+- **Decode:** `domain/sevenTv.ts` decodes each emote on its own with `Schema`; a bad emote is dropped, never the set. An
+  emote is zero-width when the set flag `1` or the emote flag `256` is set. Name to `{ id, url, width, height,
+  zeroWidth }`; width and height come from the `1x.webp` file entry. A channel emote overrides a global one with the same
+  name. A channel without a 7TV account (404) gives only the globals.
+- **Fetch:** `services/SevenTv.ts` caches one request per set for the life of the page, with an 8 s timeout. Any failure
+  gives an empty set, so lite chat only has no 7TV emotes.
+- **Segments:** `withSevenTv` runs at render time over the message's text segments (so the setting and late-arriving
+  emote lists apply live, and all lines are re-rendered when either changes). Space-separated tokens equal to an emote
+  name become `sevenTv` segments. Twitch emotes from the IRC tags keep priority because they are no longer text. A
+  zero-width emote with only spaces between it and the previous emote becomes an overlay in a `stack` segment; elsewhere
+  it stands alone. Rendering uses `textContent` and `<img>` only.
+- **CSP:** the Twitch page's policy did not block either path. Tested on a live channel with the unpacked extension: the
+  content script's `fetch` to 7tv.io works, and the `<img>` elements in the PiP document load from cdn.7tv.app
+  (`naturalWidth > 0`). So no service worker route and no new `host_permissions` are needed.
 
 ### Content script teardown
 
