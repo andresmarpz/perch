@@ -6,7 +6,7 @@ import { PipOpenFailed, PipUnsupported, PlayerNotFound } from "./errors.ts"
 import { LiteChat } from "./LiteChat.ts"
 import { SettingsStore } from "./SettingsStore.ts"
 import { TwitchPage } from "./TwitchPage.ts"
-import { type Handoff, moveVideoIn } from "./videoHandoff.ts"
+import { type Handoff, moveVideoIn, playerOf } from "./videoHandoff.ts"
 
 export type SessionState = "idle" | "opening" | "open"
 
@@ -28,6 +28,16 @@ export interface SessionOptions {
   readonly settings: Settings
   readonly onKeydown: (event: KeyboardEvent) => void
 }
+
+export const superviseEnd = (rootScope: Scope.Scope, scope: Scope.Closeable, ended: Latch.Latch) =>
+  Effect.gen(function*() {
+    yield* Scope.addFinalizer(scope, Latch.open(ended))
+    yield* Effect.gen(function*() {
+      yield* ended.await
+      yield* Effect.yieldNow
+      yield* Scope.close(scope, Exit.void)
+    }).pipe(Effect.forkIn(rootScope))
+  })
 
 export class PipSession extends Context.Service<PipSession, {
   readonly stateUnsafe: () => SessionState
@@ -91,7 +101,16 @@ export class PipSession extends Context.Service<PipSession, {
             })),
           )
 
+          const player = playerOf(video)
           const patches = yield* Queue.unbounded<Partial<Settings>>()
+          const savePatch = (patch: Partial<Settings>) =>
+            store.set(patch).pipe(
+              Effect.catchCause((cause) => Effect.logError("twitch-pip: could not save settings", cause)),
+              Effect.uninterruptible,
+            )
+          yield* Effect.addFinalizer(() =>
+            Queue.clear(patches).pipe(Effect.flatMap((rest) => Effect.forEach(rest, savePatch, { discard: true })))
+          )
           const ui = yield* Effect.acquireRelease(
             Effect.sync(() =>
               mountPipUi(pip, {
@@ -118,14 +137,9 @@ export class PipSession extends Context.Service<PipSession, {
             () => Effect.sync(() => pip.document.removeEventListener("keydown", options.onKeydown, true)),
           )
 
-          yield* page.watchForeignVideo(() => Latch.openUnsafe(ended))
+          yield* page.watchForeignVideo(player, () => Latch.openUnsafe(ended))
 
-          yield* Stream.fromQueue(patches).pipe(
-            Stream.runForEach((patch) =>
-              store.set(patch).pipe(Effect.catchCause((cause) => Effect.logError("twitch-pip: could not save settings", cause)))
-            ),
-            Effect.forkScoped,
-          )
+          yield* Stream.fromQueue(patches).pipe(Stream.runForEach(savePatch), Effect.forkScoped)
 
           let applied = initial
           let layout: Layout = initial.layout
@@ -216,11 +230,7 @@ export class PipSession extends Context.Service<PipSession, {
             return yield* Effect.failCause(exit.cause)
           }
           yield* setState("open")
-          yield* Effect.gen(function*() {
-            yield* ended.await
-            yield* Effect.yieldNow
-            yield* Scope.close(scope, Exit.void)
-          }).pipe(Effect.forkIn(rootScope))
+          yield* superviseEnd(rootScope, scope, ended)
         })
 
       const close = Effect.suspend(() => (live === undefined ? Effect.void : Scope.close(live.scope, Exit.void)))

@@ -16,6 +16,12 @@ class FakeVideo extends EventTarget {
     }
     return Promise.resolve()
   }
+  closest() {
+    return null
+  }
+  pause() {
+    this.paused = true
+  }
   remove() {
     this.removed = true
   }

@@ -111,6 +111,13 @@
       document.querySelector('[data-a-target="animated-channel-viewers-count"]').insertAdjacentHTML("beforebegin", playerHtml)
       document.querySelector("video").play().catch(() => undefined)
     },
+    addSecondPlayer() {
+      const second = document.querySelector(".video-player").cloneNode(true)
+      second.querySelectorAll("[data-twitch-pip]").forEach((node) => node.remove())
+      second.querySelector("video").dataset.twitchOwn = "second"
+      document.querySelector('[data-a-target="animated-channel-viewers-count"]').after(second)
+      second.querySelector("video").play().catch(() => undefined)
+    },
     rerenderPlayer() {
       const player = document.querySelector(".video-player")
       const fresh = player.cloneNode(true)

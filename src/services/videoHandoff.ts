@@ -3,6 +3,18 @@ import { selectors } from "./TwitchPage.ts"
 interface VideoOrigin {
   readonly parent: Element | null
   readonly next: ChildNode | null
+  readonly player: Element
+}
+
+export const playerOf = (video: HTMLVideoElement): Element =>
+  video.closest(selectors.player) ?? video.closest(selectors.videoRef) ?? video.parentElement ?? video
+
+const otherVideosIn = (player: Element, video: HTMLVideoElement): ReadonlyArray<Element> =>
+  Array.from(player.querySelectorAll("video")).filter((other) => other !== video)
+
+const discard = (video: HTMLVideoElement) => {
+  video.pause()
+  video.remove()
 }
 
 export interface Handoff {
@@ -44,43 +56,43 @@ export const keepPlaying = (video: HTMLVideoElement, delays: ReadonlyArray<numbe
   pendingReplays.set(video, stop)
 }
 
-const otherPlayerVideos = (video: HTMLVideoElement): ReadonlyArray<Element> =>
-  Array.from(document.querySelectorAll(selectors.playerVideos)).filter((other) => other !== video)
-
-const dropWhenTwitchMounts = (video: HTMLVideoElement, target: Element) => {
+const dropWhenTwitchMounts = (video: HTMLVideoElement, player: Element) => {
   const stop = () => {
     observer.disconnect()
     clearTimeout(timer)
   }
   const check = () => {
     if (!video.isConnected || video.ownerDocument !== document) return stop()
-    if (otherPlayerVideos(video).length === 0) return
-    video.remove()
+    if (otherVideosIn(player, video).length === 0) return
+    discard(video)
     stop()
   }
   const observer = new MutationObserver(check)
   const timer = setTimeout(stop, settleWindowMs)
-  observer.observe(target.closest(selectors.player)?.parentElement ?? target.parentElement ?? target, {
-    childList: true,
-    subtree: true,
-  })
+  observer.observe(player, { childList: true, subtree: true })
   requestAnimationFrame(check)
 }
 
 const placeVideo = (video: HTMLVideoElement, origin: VideoOrigin): boolean => {
-  const target = origin.parent?.isConnected === true ? origin.parent : document.querySelector(selectors.videoRef)
-  if (target === null || otherPlayerVideos(video).length > 0) {
-    video.remove()
+  const originKept = origin.parent?.isConnected === true
+  const target = originKept ? origin.parent : document.querySelector(selectors.videoRef)
+  if (target === null) {
+    discard(video)
+    return false
+  }
+  const player = originKept && origin.player.isConnected ? origin.player : (target.closest(selectors.player) ?? target)
+  if (otherVideosIn(player, video).length > 0) {
+    discard(video)
     return false
   }
   const next = origin.next !== null && origin.next.parentNode === target ? origin.next : null
   target.insertBefore(video, next)
-  dropWhenTwitchMounts(video, target)
+  dropWhenTwitchMounts(video, player)
   return true
 }
 
 export const moveVideoIn = (video: HTMLVideoElement, stage: HTMLElement): Handoff => {
-  const origin: VideoOrigin = { parent: video.parentElement, next: video.nextSibling }
+  const origin: VideoOrigin = { parent: video.parentElement, next: video.nextSibling, player: playerOf(video) }
   const wasPlaying = !video.paused
   stage.append(video)
   if (wasPlaying) keepPlaying(video)

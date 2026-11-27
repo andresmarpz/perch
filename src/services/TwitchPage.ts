@@ -5,7 +5,6 @@ export const selectors = {
   player: '[data-a-target="video-player"]',
   videoRef: '[data-a-target="video-ref"]',
   video: '[data-a-target="video-ref"] video',
-  playerVideos: '[data-a-target="video-ref"] video, [data-a-target="video-player"] video',
   anyVideo: "video",
   rightControls: ".player-controls__right-control-group",
   fullscreenButton: '[data-a-target="player-fullscreen-button"]',
@@ -24,7 +23,7 @@ const replaceDelayMs = 150
 export class TwitchPage extends Context.Service<TwitchPage, {
   readonly findVideo: Effect.Effect<Option.Option<HTMLVideoElement>>
   readonly videoUnsafe: () => HTMLVideoElement | null
-  watchForeignVideo(onForeign: () => void): Effect.Effect<void, never, Scope.Scope>
+  watchForeignVideo(player: Element, onForeign: () => void): Effect.Effect<void, never, Scope.Scope>
   readonly routeChanges: Stream.Stream<Route>
   injectButton(onClick: () => void, hotkey: string): Effect.Effect<ButtonHandle, never, Scope.Scope>
 }>()("twitch-pip/services/TwitchPage") {
@@ -76,16 +75,14 @@ const makePage = (win: Window) => {
 
   const findVideo = Effect.sync(() => Option.fromNullOr(videoUnsafe()))
 
-  const watchForeignVideo = (onForeign: () => void) =>
+  const watchForeignVideo = (player: Element, onForeign: () => void) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const ref = doc.querySelector(selectors.videoRef)
-        const root = ref?.closest(selectors.player)?.parentElement ?? ref?.parentElement ?? doc.documentElement
         const check = () => {
-          if (doc.querySelector(selectors.playerVideos) !== null) onForeign()
+          if (player.querySelector("video") !== null) onForeign()
         }
         const observer = new MutationObserver(check)
-        observer.observe(root, { childList: true, subtree: true })
+        observer.observe(player, { childList: true, subtree: true })
         check()
         return observer
       }),

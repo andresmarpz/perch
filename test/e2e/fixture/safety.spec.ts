@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test"
-import { click, closed, expect, test, tid, type Harness } from "../support/fixtures.ts"
+import { click, closed, countRequestWindow, expect, test, tid } from "../support/fixtures.ts"
 
 const owners = (page: Page) =>
   page.evaluate(() => [...document.querySelectorAll("video")].map((v) => v.dataset["twitchOwn"] ?? "extension"))
@@ -10,12 +10,25 @@ const pressHotkey = async (page: Page) => {
 }
 
 test.describe("the tab never loses its video and never ends up with two", () => {
-  test("two quick clicks open one window", async ({ app }) => {
+  test("three quick clicks ask for one window and leave the session open", async ({ app }) => {
     const page = await app.openChannel()
-    await tid(page, "pip-open").first().dblclick({ force: true })
+    const requests = await countRequestWindow(app, page, 300)
+    await page.evaluate(() => {
+      const button = document.querySelector<HTMLButtonElement>('[data-testid="pip-open"]')!
+      button.click()
+      button.click()
+      button.click()
+    })
     await page.waitForTimeout(1200)
+    expect(await requests()).toBe(1)
     expect(app.ctx.pages()).toHaveLength(2)
     expect(await owners(page)).toEqual([])
+    const popup = app.ctx.pages().find((candidate) => candidate !== page)!
+    const gone = closed(popup)
+    await page.bringToFront()
+    await tid(page, "pip-open").first().click({ force: true })
+    await gone
+    await expect.poll(() => owners(page)).toEqual(["extension"])
   })
 
   test("the video is back in the tab before the PiP window's pagehide event finishes", async ({ app }) => {
@@ -35,6 +48,7 @@ test.describe("the tab never loses its video and never ends up with two", () => 
 
   test("a PiP window that closes while it opens leaves the video in the tab", async ({ app }) => {
     const page = await app.openChannel()
+    await countRequestWindow(app, page, 150)
     await page.evaluate(() => {
       window.documentPictureInPicture.addEventListener("enter", (event) => (event as Event & { window: Window }).window.close(), { once: true })
     })
@@ -60,6 +74,21 @@ test.describe("the tab never loses its video and never ends up with two", () => 
     await click(pip, "pip-back")
     await gone
     await expect.poll(() => page.evaluate(() => window.__uiRemoved)).toBe(true)
+  })
+
+  test("a second player on the page is never touched and never ends the session", async ({ app }) => {
+    const page = await app.openChannel()
+    await page.evaluate(() => window.__twitch.addSecondPlayer())
+    const pip = await app.openPip(page)
+    await page.waitForTimeout(3500)
+    expect(pip.isClosed()).toBe(false)
+    expect(await owners(page)).toEqual(["second"])
+    const gone = closed(pip)
+    await click(pip, "pip-back")
+    await gone
+    await page.waitForTimeout(3500)
+    expect(await owners(page)).toEqual(["extension", "second"])
+    expect(await page.evaluate(() => document.querySelector(".video-player")!.querySelectorAll("video").length)).toBe(1)
   })
 
   test("Twitch mounting its own video during the session ends it and leaves only Twitch's video", async ({ app }) => {
@@ -118,6 +147,22 @@ test.describe("the tab never loses its video and never ends up with two", () => 
     await expect.poll(() => owners(page)).toEqual(["1"])
     await page.waitForTimeout(600)
     expect(await owners(page)).toEqual(["1"])
+  })
+})
+
+test.describe("settings from the toolbar", () => {
+  test("a change made right before the session ends is still saved", async ({ app }) => {
+    await app.setSettings({ layout: "side", chatSource: "lite" })
+    const pip = await app.openPip(await app.openChannel(), { width: 1000, height: 400 })
+    const gone = closed(pip)
+    await pip
+      .evaluate(() => {
+        document.querySelector<HTMLButtonElement>('[data-testid="pip-font-up"]')!.click()
+        document.querySelector<HTMLButtonElement>('[data-testid="pip-back"]')!.click()
+      })
+      .catch(() => undefined)
+    await gone
+    await expect.poll(async () => (await app.getSettings())["chatFontSize"]).toBe(14)
   })
 })
 

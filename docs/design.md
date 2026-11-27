@@ -103,21 +103,31 @@ One `Effect.scoped` program per session:
    later tick, so the window is not closed from inside its own `pagehide`.
 
 The session must never leave the tab without its video and never leave it with two. Every exit path goes through the
-scope's release. While the session runs, a `MutationObserver` on the player's parent ends it as soon as Twitch mounts its
-own `<video>` there. At restore the video goes back to its old place; if the player already holds another `<video>`, ours
-is dropped instead. After a restore the player is watched for 3 s (and one animation frame): if Twitch mounts its own
-video in that window, ours is removed. The invariant is exactly one `<video>` in the tab's player after any session end.
+scope's release. All video checks are limited to the session's own player: the `video-player` element (or `video-ref`)
+that our video came from. A second player elsewhere on the page (an ad, a squad or carousel player) is never looked at
+and never touched. While the session runs, a `MutationObserver` on that player ends it as soon as Twitch mounts its own
+`<video>` in it. At restore the video goes back to its old place; if that player already holds another `<video>`, ours
+is dropped (paused and removed) instead. After a restore the same player is watched for 3 s (and one animation frame): if
+Twitch mounts its own video in it, ours is removed. The invariant is exactly one `<video>` in the session's player after
+any session end. The one exception: if no `video-ref` exists at restore (Twitch navigated away), the video is dropped and
+the player has none.
 
 ### Content script teardown
 
-The content script holds a `chrome.runtime.connect` port to the service worker. A reload, update or removal of the
-extension orphans the content script: its `chrome.*` calls start to throw and `chrome.runtime.id` becomes `undefined`.
+While a session is open the content script holds a `chrome.runtime.connect` port to the service worker; it connects when
+the session opens and disconnects when it ends. With no session there is nothing to restore, so no link is kept and an
+idle tab never wakes the worker. A reload, update or removal of the extension orphans the content script: its `chrome.*`
+calls start to throw and `chrome.runtime.id` becomes `undefined`.
 `port.onDisconnect` alone is the wrong signal: Chrome also fires it when it suspends an idle service worker (30 s without
 events), and that must not end a session. So on disconnect the script checks `chrome.runtime.id`. Gone: dispose the
-runtime, which closes the session and puts the video back. Still defined (a suspended worker): reconnect after 1 s, which
-wakes the worker again. A `connect` that throws also counts as gone. The e2e suite covers both cases (a real
-`chrome.runtime.reload()` and a CDP `ServiceWorker.stopAllWorkers`). The page's own `pagehide` disposes the runtime too, but
+runtime, which closes the session and puts the video back. Still defined (a suspended worker): reconnect with backoff
+(1, 2, 4 s, up to 30 s; the counter resets after a port that lived 5 s), which wakes the worker and never loops tightly.
+A `connect` that throws also counts as gone. The e2e suite covers both cases (a real
+`chrome.runtime.reload()` and a CDP `ServiceWorker.stopAllWorkers`) and that an idle tab leaves a suspended worker asleep.
+The page's own `pagehide` disposes the runtime too, but
 only when `event.persisted` is false, so a page that goes into the back/forward cache keeps working when it returns.
+Settings changes made in the PiP toolbar go through a queue; each write is uninterruptible and the rest of the queue is
+written when the session closes, so a change made just before the end is not lost.
 
 ### PiP UI
 
@@ -163,8 +173,8 @@ only when `event.persisted` is false, so a page that goes into the back/forward 
 `NICK justinfan<5 digits>`, `JOIN #<channel>`. A frame can hold several lines joined by `\r\n`. Answer server `PING`
 with `PONG`. Send our own `PING` every 60 s; if no `PONG` in 10 s, treat the socket as dead. Reconnect with exponential
 backoff (1 s, capped 30 s) for as long as the stream is consumed. Handle `CLEARCHAT` / `CLEARMSG` by removing lines.
-Interrupting the stream closes the socket. The backoff restarts at 1 s only after the join succeeded (the `001` welcome or
-the JOIN echo for our nick), not when the socket merely opens, so a server that accepts and closes right away is retried
+Interrupting the stream closes the socket. The backoff restarts at 1 s only after the join succeeded (the JOIN echo for our nick,
+or `366` end of names; the `001` welcome comes before the join and does not count), not when the socket merely opens, so a server that accepts and closes right away is retried
 after 1, 2, 4 s and so on. Any failure, including a defect such as `new WebSocket` throwing, is logged with its cause and
 retried with the same backoff. The stream starts with a `connecting` status event, then `connected` after the join and
 `reconnecting` after each drop.

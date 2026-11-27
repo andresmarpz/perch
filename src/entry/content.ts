@@ -8,7 +8,7 @@ import { SettingsStore } from "../services/SettingsStore.ts"
 import { SocketFactory } from "../services/SocketFactory.ts"
 import { TwitchPage, type ButtonHandle } from "../services/TwitchPage.ts"
 import { isEditable } from "../ui/editable.ts"
-import { watchExtension } from "./extensionLink.ts"
+import { makeExtensionLink } from "./extensionLink.ts"
 
 interface MediaSessionLike {
   setActionHandler(action: string, handler: (() => void) | null): void
@@ -32,24 +32,18 @@ const main = Effect.gen(function*() {
   }
 
   const toggle = () => {
-    switch (session.stateUnsafe()) {
-      case "opening":
-        return
-      case "open":
-        run(session.close)
-        return
-      case "idle": {
-        const route = parseRoute(window.location.href)
-        if (route._tag !== "Channel") return
-        if (page.videoUnsafe() === null) return run(Effect.logWarning("twitch-pip: no player video on this page"))
-        const pending = requestPipWindow(settings.windowSizes[settings.layout])
-        run(
-          session.open(route.channel, pending, { settings, onKeydown }).pipe(
-            Effect.catch((error) => Effect.logWarning("twitch-pip: could not open", error)),
-          ),
-        )
-      }
-    }
+    const state = session.stateUnsafe()
+    if (state === "opening") return
+    if (state === "open") return run(session.close)
+    const route = parseRoute(window.location.href)
+    if (route._tag !== "Channel") return
+    if (page.videoUnsafe() === null) return run(Effect.logWarning("twitch-pip: no player video on this page"))
+    const pending = requestPipWindow(settings.windowSizes[settings.layout])
+    run(
+      session.open(route.channel, pending, { settings, onKeydown }).pipe(
+        Effect.catch((error) => Effect.logWarning("twitch-pip: could not open", error)),
+      ),
+    )
   }
 
   yield* Effect.acquireRelease(
@@ -57,10 +51,8 @@ const main = Effect.gen(function*() {
     () => Effect.sync(() => window.removeEventListener("keydown", onKeydown, true)),
   )
 
-  yield* Effect.acquireRelease(
-    Effect.sync(() => watchExtension(() => void runtime.dispose())),
-    (stop) => Effect.sync(stop),
-  )
+  const link = makeExtensionLink(() => void runtime.dispose())
+  yield* Effect.addFinalizer(() => Effect.sync(link.stop))
 
   const mediaSession = (navigator as unknown as { readonly mediaSession?: MediaSessionLike }).mediaSession
   const syncAutoPip = () => {
@@ -93,7 +85,16 @@ const main = Effect.gen(function*() {
     ),
     Effect.forkScoped,
   )
-  yield* session.states.pipe(Stream.runForEach(() => Effect.sync(syncAutoPip)), Effect.forkScoped)
+  yield* session.states.pipe(
+    Stream.runForEach((state) =>
+      Effect.sync(() => {
+        if (state === "idle") link.stop()
+        else link.start()
+        syncAutoPip()
+      })
+    ),
+    Effect.forkScoped,
+  )
 
   let buttonScope: Scope.Closeable | undefined
   let button: ButtonHandle | undefined

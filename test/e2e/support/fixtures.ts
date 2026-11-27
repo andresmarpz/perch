@@ -9,6 +9,7 @@ declare global {
       mountVideo(delay?: number): void
       addPlayer(): void
       rerenderPlayer(): void
+      addSecondPlayer(): void
     }
     __pauseOnMove?: boolean
     __uiRemoved?: boolean
@@ -149,3 +150,37 @@ export const openLite = async (app: Harness, layout: "side" | "below" | "overlay
 }
 
 export const storedSizes = async (app: Harness) => (await app.getSettings())["windowSizes"] ?? {}
+
+export const inContentScript = async (app: Harness, page: Page) => {
+  const cdp = await app.ctx.newCDPSession(page)
+  const contexts: Array<{ id: number; origin: string }> = []
+  cdp.on("Runtime.executionContextCreated", ({ context }) => contexts.push(context))
+  await cdp.send("Runtime.enable")
+  const extension = contexts.find((context) => context.origin.startsWith("chrome-extension://"))
+  if (extension === undefined) throw new Error("content script context not found")
+  return async (expression: string): Promise<unknown> => {
+    const { result } = await cdp.send("Runtime.evaluate", {
+      expression,
+      contextId: extension.id,
+      awaitPromise: true,
+      returnByValue: true,
+    })
+    return result.value
+  }
+}
+
+export const countRequestWindow = async (app: Harness, page: Page, delayMs: number) => {
+  const evaluate = await inContentScript(app, page)
+  await evaluate(`(() => {
+    const api = window.documentPictureInPicture
+    const original = api.requestWindow.bind(api)
+    window.__requests = 0
+    api.requestWindow = async (...args) => {
+      window.__requests += 1
+      const win = await original(...args)
+      await new Promise((resolve) => setTimeout(resolve, ${delayMs}))
+      return win
+    }
+  })()`)
+  return async () => (await evaluate("window.__requests")) as number
+}

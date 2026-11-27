@@ -1,5 +1,7 @@
 export const portName = "twitch-pip-content"
-const reconnectMs = 1000
+const baseDelayMs = 1000
+const maxDelayMs = 30_000
+const healthyMs = 5000
 
 export const extensionAlive = (): boolean => {
   try {
@@ -9,39 +11,57 @@ export const extensionAlive = (): boolean => {
   }
 }
 
-export const watchExtension = (onGone: () => void): (() => void) => {
+export interface ExtensionLink {
+  readonly start: () => void
+  readonly stop: () => void
+}
+
+export const makeExtensionLink = (onGone: () => void): ExtensionLink => {
   let port: chrome.runtime.Port | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
-  let stopped = false
+  let active = false
+  let attempts = 0
+  let connectedAt = 0
 
   const onDisconnect = () => {
     void chrome.runtime.lastError
     port = undefined
-    if (stopped) return
+    if (!active) return
     if (!extensionAlive()) return onGone()
-    timer = setTimeout(connect, reconnectMs)
+    if (Date.now() - connectedAt >= healthyMs) attempts = 0
+    timer = setTimeout(connect, Math.min(maxDelayMs, baseDelayMs * 2 ** attempts))
+    attempts += 1
   }
 
   const connect = () => {
-    if (stopped) return
+    if (!active) return
     if (!extensionAlive()) return onGone()
     try {
       port = chrome.runtime.connect({ name: portName })
+      connectedAt = Date.now()
       port.onDisconnect.addListener(onDisconnect)
     } catch {
       onGone()
     }
   }
 
-  connect()
-
-  return () => {
-    stopped = true
+  const stop = () => {
+    active = false
     clearTimeout(timer)
     try {
       port?.disconnect()
     } catch {
       port = undefined
     }
+    port = undefined
   }
+
+  const start = () => {
+    if (active) return
+    active = true
+    attempts = 0
+    connect()
+  }
+
+  return { start, stop }
 }
